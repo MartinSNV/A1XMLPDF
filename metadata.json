@@ -1,0 +1,5 @@
+{
+  "name": "A1 XML Form Generator for SZČO",
+  "description": "A web application to generate an XML file for the 'Request for issuance of a portable document A1 due to the posting of a self-employed person (SZČO)' based on the official Slovak eForm schema. The user fills in a form, and the application generates a compliant XML file for download.",
+  "requestFramePermissions": []
+}
