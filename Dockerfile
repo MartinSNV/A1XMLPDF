@@ -10,23 +10,24 @@ COPY . .
 RUN npm run build
 
 # ── Stage 2: Production image ─────────────────────────────────────────────────
-FROM node:22-slim
+FROM python:3.12-slim
 
-# Install Python + pip
+# Install Node.js
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
+# Install Python dependencies
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
 # Install Node dependencies (production only)
 COPY package*.json ./
 RUN npm ci --omit=dev
-
-# Install Python dependencies
-COPY requirements.txt ./
-RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages
 
 # Copy built frontend and server files
 COPY --from=builder /app/dist ./dist
@@ -34,7 +35,6 @@ COPY --from=builder /app/public ./public
 COPY server.ts generatePdf.ts types.ts ./
 COPY fill_a1_pdf.py ./
 
-# Port exposed (Northflank injects PORT env var)
 EXPOSE 3000
 
 ENV NODE_ENV=production
