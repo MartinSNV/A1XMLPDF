@@ -1,6 +1,5 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
-import type { FormDataState, Address } from './types';
+import type { FormDataState, Address, MiestoVyslania } from './types';
 import FormSection from './components/FormSection';
 import InputField from './components/InputField';
 import SelectField from './components/SelectField';
@@ -13,6 +12,7 @@ import { generateA1Xml, parseBirthDateFromRc } from './utils';
 import { useRpo } from './hooks/useRpo';
 
 const emptyAddress: Address = { ulica: '', supisneCislo: '', orientacneCislo: '', obec: '', psc: '', stat: 'Slovenská republika' };
+const emptyMiesto = (): MiestoVyslania => ({ obchodneMeno: '', ico: '', adresa: { ...emptyAddress, stat: '' } });
 
 const initialFormData: FormDataState = {
   titulPred: '', meno: '', priezvisko: '', rodnePriezvisko: '', titulZa: '', rodneCislo: '', datumNarodenia: '', miestoNarodenia: '',
@@ -22,9 +22,16 @@ const initialFormData: FormDataState = {
   zadatKorespodencnuAdresu: false, korespodencnaAdresa: { ...emptyAddress },
   ico: '', obchodneMeno: '', datumZaciatkuCinnosti: '', identifikacneCisloVSocialnejPoistovni: '', cinnostSZCONaSlovensku: '', skNace: 'F',
   zadatAdresuMiestaPodnikania: false, adresaMiestaPodnikania: { ...emptyAddress },
-  statVyslania: '', adresaVyslania: { ...emptyAddress, stat: '' }, dalsieMiestaVyslania: [], datumZaciatkuVyslania: '', datumKoncaVyslania: '',
+  prerusenieZivnosti: false, prerusenieOd: '', prerusenieDo: '',
+  skutocnaCinnostOd: '', skutocnaCinnostDo: '', skutocnaCinnostHodinMesacne: '',
+  cinnostVStatePredVyslanim: false, cinnostVStatePredOd: '', cinnostVStatePredDo: '',
+  statVyslania: '', adresaVyslania: { ...emptyAddress, stat: '' }, dalsieMiestaVyslania: [],
+  datumZaciatkuVyslania: '', datumKoncaVyslania: '',
   obchodneMenoPrijimajucejOsoby: '', icoPrijimajucejOsoby: '', popisCinnosti: '',
-  obvykleMiestoVykonuCinnosti: true, nahradenieOsoby: false, vykonavanieCinnostiPreInuOsobu: false, najomPracovnejSily: false,
+  obvykleMiestoVykonuCinnosti: true, zachovaPriestory: true,
+  nahradenieOsoby: false, vykonavanieCinnostiPreInuOsobu: false, najomPracovnejSily: false,
+  vydanyVInejKrajine: false, vydanyVInejKrajineOd: '', vydanyVInejKrajineDo: '',
+  vydanyVInejKrajineDatum: '', vydanyVInejKrajineInstitucia: '',
   pobocka: 'BA', poznamka: '', isForeigner: false
 };
 
@@ -55,16 +62,11 @@ const App: React.FC = () => {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const { loading: rpoLoading, error: rpoError, success: icoFetchSuccess } = useRpo(formData.ico, setFormData);
 
-  // Derived state for date validation
   const dateError = React.useMemo(() => {
     if (formData.datumZaciatkuVyslania && formData.datumKoncaVyslania) {
-      // Robust comparison using Date objects
       const start = new Date(formData.datumZaciatkuVyslania);
       const end = new Date(formData.datumKoncaVyslania);
-      
-      if (end < start) {
-        return 'Dátum konca vyslania nesmie byť skôr ako dátum začiatku.';
-      }
+      if (end < start) return 'Dátum konca vyslania nesmie byť skôr ako dátum začiatku.';
     }
     return null;
   }, [formData.datumZaciatkuVyslania, formData.datumKoncaVyslania]);
@@ -84,26 +86,26 @@ const App: React.FC = () => {
     setFormData(prev => {
       let newState = { ...prev };
       if (name.includes('.')) {
-        const [parent, child] = name.split('.');
-        const parentKey = parent as keyof FormDataState;
-        newState = { ...newState, [parentKey]: { ...(newState[parentKey] as object), [child]: value } };
+        const parts = name.split('.');
+        if (parts.length === 3) {
+          // dalsieMiestaVyslania.0.obchodneMeno or dalsieMiestaVyslania.0.adresa.ulica handled below
+        } else {
+          const [parent, child] = parts;
+          const parentKey = parent as keyof FormDataState;
+          newState = { ...newState, [parentKey]: { ...(newState[parentKey] as object), [child]: value } };
+        }
       } else {
         newState = { ...newState, [name]: type === 'checkbox' ? checked : value };
       }
       if (name === 'rodneCislo') {
-         const birthDate = parseBirthDateFromRc(value);
-         if (birthDate) newState.datumNarodenia = birthDate;
+        const birthDate = parseBirthDateFromRc(value);
+        if (birthDate) newState.datumNarodenia = birthDate;
       }
-      
-      // Auto-select branch based on PSC (adresaPobytu.psc)
       if (name === 'adresaPobytu.psc') {
         const cleanPsc = value.replace(/\s/g, '');
         const branchCode = BRANCH_OFFICE_BY_PSC[cleanPsc];
-        if (branchCode) {
-          newState.pobocka = branchCode;
-        }
+        if (branchCode) newState.pobocka = branchCode;
       }
-      
       return newState;
     });
   }, []);
@@ -163,13 +165,9 @@ const App: React.FC = () => {
             <div className="flex flex-col space-y-3 pt-2">
               <div className="h-8 flex items-center justify-center text-sm font-medium transition-all duration-300">
                 {rpoLoading ? (
-                  <span className="text-blue-600 dark:text-blue-400 flex items-center gap-2">
-                    <SpinnerIcon /> Hľadám údaje v registri...
-                  </span>
+                  <span className="text-blue-600 dark:text-blue-400 flex items-center gap-2"><SpinnerIcon /> Hľadám údaje v registri...</span>
                 ) : icoFetchSuccess ? (
-                  <span className="text-green-600 dark:text-green-400 flex items-center gap-2">
-                    <CheckIcon /> Údaje úspešne načítané, pokračujem...
-                  </span>
+                  <span className="text-green-600 dark:text-green-400 flex items-center gap-2"><CheckIcon /> Údaje úspešne načítané, pokračujem...</span>
                 ) : (
                   <span className="text-gray-400 dark:text-gray-500">Zadajte IČO pre automatické vyhľadanie</span>
                 )}
@@ -188,21 +186,19 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-300">
       <ThemeSwitcher />
       <div className="fixed top-4 left-4 z-10">
-         <button 
-           onClick={() => {
-             setFormData(initialFormData);
-             setStep('welcome');
-           }} 
-           className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-red-600 transition-colors" 
-           title="Resetovať formulár a vrátiť sa na úvod"
-         >
-           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-           </svg>
-         </button>
+        <button onClick={() => { setFormData(initialFormData); setStep('welcome'); }}
+          className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-red-600 transition-colors"
+          title="Resetovať formulár a vrátiť sa na úvod">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
       </div>
+
       <main className="container mx-auto px-4 py-8 pt-20 max-w-5xl">
         <form onSubmit={(e) => { e.preventDefault(); if (!dateError) generateA1Xml(formData); }}>
+
+          {/* ── 1. Žiadateľ ── */}
           <FormSection title="1. Údaje o žiadateľovi">
             <InputField label="Titul pred menom" id="titulPred" name="titulPred" value={formData.titulPred} onChange={handleChange} suggestions={TITLES_BEFORE} />
             <InputField label="Meno" id="meno" name="meno" value={formData.meno} onChange={handleChange} required />
@@ -219,200 +215,227 @@ const App: React.FC = () => {
             <InputField label="Telefón" id="telefon" name="telefon" type="tel" value={formData.telefon} onChange={handleChange} required />
             <CheckboxField label="Mám pobytový preukaz v SR" id="pobytovyPreukaz" name="pobytovyPreukaz" checked={formData.pobytovyPreukaz} onChange={handleChange} />
             <div className="md:col-span-3 mt-4 border-t border-gray-200 dark:border-gray-700 pt-6">
-                 <h3 className="text-lg font-medium mb-4">Adresa trvalého pobytu</h3>
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <AddressFields address={formData.adresaPobytu} namePrefix="adresaPobytu" onChange={handleChange} required />
-                 </div>
+              <h3 className="text-lg font-medium mb-4">Adresa trvalého pobytu</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <AddressFields address={formData.adresaPobytu} namePrefix="adresaPobytu" onChange={handleChange} required />
+              </div>
             </div>
           </FormSection>
 
+          {/* ── 2. Podnikanie ── */}
           <FormSection title="2. Podnikanie na Slovensku">
             <InputField label="IČO" id="ico" name="ico" inputMode="numeric" value={formData.ico} onChange={handleChange} required />
             <InputField label="Obchodné meno" id="obchodneMeno" name="obchodneMeno" value={formData.obchodneMeno} onChange={handleChange} required gridSpan="md:col-span-2" />
-            <InputField label="Dátum začiatku činnosti" id="datumZaciatkuCinnosti" name="datumZaciatkuCinnosti" type="date" value={formData.datumZaciatkuCinnosti} onChange={handleChange} required />
+            <InputField label="Dátum začiatku činnosti SZČO" id="datumZaciatkuCinnosti" name="datumZaciatkuCinnosti" type="date" value={formData.datumZaciatkuCinnosti} onChange={handleChange} required />
             <SelectField label="SK NACE (Ekonomická činnosť)" id="skNace" name="skNace" value={formData.skNace} onChange={handleChange} options={NACE_CATEGORIES.map(n => n.name)} />
-            
-            <InputField 
-                label="Popis činnosti na Slovensku" 
-                id="cinnostSZCONaSlovensku" 
-                name="cinnostSZCONaSlovensku" 
-                type="textarea" 
-                value={formData.cinnostSZCONaSlovensku} 
-                onChange={handleChange} 
-                required 
-                gridSpan="md:col-span-3" 
-                suggestions={formData.dostupneCinnosti}
-                placeholder={formData.dostupneCinnosti && formData.dostupneCinnosti.length > 1 ? "Vyberte činnosť zo zoznamu (ikona vpravo hore) alebo vyplňte ručne..." : ""}
+            <InputField
+              label="Popis činnosti na Slovensku"
+              id="cinnostSZCONaSlovensku"
+              name="cinnostSZCONaSlovensku"
+              type="textarea"
+              value={formData.cinnostSZCONaSlovensku}
+              onChange={handleChange}
+              required
+              gridSpan="md:col-span-3"
+              suggestions={formData.dostupneCinnosti}
             />
-            <div className="md:col-span-3 mt-4 p-4 border border-gray-100 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-slate-800">
-                <h3 className="text-lg font-medium mb-4">Adresa miesta podnikania</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <AddressFields address={formData.adresaMiestaPodnikania} namePrefix="adresaMiestaPodnikania" onChange={handleChange} required />
+
+            {/* Prerušenie živnosti */}
+            <div className="md:col-span-3 border-t border-gray-200 dark:border-gray-700 pt-6">
+              <CheckboxField label="Živnosť bola prerušená" id="prerusenieZivnosti" name="prerusenieZivnosti" checked={formData.prerusenieZivnosti} onChange={handleChange} />
+              {formData.prerusenieZivnosti && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
+                  <InputField label="Prerušenie od" id="prerusenieOd" name="prerusenieOd" type="date" value={formData.prerusenieOd} onChange={handleChange} />
+                  <InputField label="Prerušenie do" id="prerusenieDo" name="prerusenieDo" type="date" value={formData.prerusenieDo} onChange={handleChange} />
                 </div>
+              )}
+            </div>
+
+            {/* Skutočná činnosť na Slovensku */}
+            <div className="md:col-span-3 border-t border-gray-200 dark:border-gray-700 pt-6">
+              <h3 className="text-lg font-medium mb-4">Skutočná činnosť na Slovensku (referenčné obdobie)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <InputField label="Od" id="skutocnaCinnostOd" name="skutocnaCinnostOd" type="date" value={formData.skutocnaCinnostOd} onChange={handleChange} />
+                <InputField label="Do" id="skutocnaCinnostDo" name="skutocnaCinnostDo" type="date" value={formData.skutocnaCinnostDo} onChange={handleChange} />
+                <InputField label="Suma všetkých faktúr (€)" id="skutocnaCinnostHodinMesacne" name="skutocnaCinnostHodinMesacne" type="number" value={formData.skutocnaCinnostHodinMesacne} onChange={handleChange} />
+              </div>
+            </div>
+
+            <div className="md:col-span-3 mt-4 p-4 border border-gray-100 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-slate-800">
+              <h3 className="text-lg font-medium mb-4">Adresa miesta podnikania</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <AddressFields address={formData.adresaMiestaPodnikania} namePrefix="adresaMiestaPodnikania" onChange={handleChange} required />
+              </div>
             </div>
           </FormSection>
 
-          <FormSection title="3. Údaje o vyslaní a doručení">
+          {/* ── 3. Vyslanie ── */}
+          <FormSection title="3. Údaje o vyslaní">
             <div className="md:col-span-3 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div className="flex flex-col">
-                        <InputField 
-                            label="Začiatok vyslania" 
-                            id="datumZaciatkuVyslania" 
-                            name="datumZaciatkuVyslania" 
-                            type="date" 
-                            value={formData.datumZaciatkuVyslania} 
-                            onChange={handleChange} 
-                            required 
-                            error={!!dateError}
-                        />
-                        {dateError && <span className="text-[10px] uppercase tracking-wider text-red-600 dark:text-red-400 mt-1 font-bold animate-pulse">Chybný dátum</span>}
-                    </div>
-                    <div className="flex flex-col">
-                        <InputField 
-                            label="Koniec vyslania" 
-                            id="datumKoncaVyslania" 
-                            name="datumKoncaVyslania" 
-                            type="date" 
-                            value={formData.datumKoncaVyslania} 
-                            onChange={handleChange} 
-                            required 
-                            min={formData.datumZaciatkuVyslania}
-                            error={!!dateError}
-                        />
-                        {dateError && <span className="text-[10px] uppercase tracking-wider text-red-600 dark:text-red-400 mt-1 font-bold animate-pulse">Nesmie byť pred začiatkom</span>}
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="flex flex-col">
+                  <InputField label="Začiatok vyslania" id="datumZaciatkuVyslania" name="datumZaciatkuVyslania" type="date" value={formData.datumZaciatkuVyslania} onChange={handleChange} required error={!!dateError} />
+                  {dateError && <span className="text-[10px] uppercase tracking-wider text-red-600 dark:text-red-400 mt-1 font-bold animate-pulse">Chybný dátum</span>}
                 </div>
-                
-                {dateError && (
-                    <div className="p-5 bg-red-600 text-white rounded-2xl shadow-lg flex items-center gap-4 transform transition-all scale-100 hover:scale-[1.01]" role="alert">
-                        <div className="bg-white/20 p-2 rounded-full">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                            </svg>
-                        </div>
-                        <div>
-                            <p className="font-bold text-lg leading-tight">Chyba v dátumoch vyslania</p>
-                            <p className="text-sm opacity-90">{dateError}</p>
-                        </div>
+                <div className="flex flex-col">
+                  <InputField label="Koniec vyslania" id="datumKoncaVyslania" name="datumKoncaVyslania" type="date" value={formData.datumKoncaVyslania} onChange={handleChange} required min={formData.datumZaciatkuVyslania} error={!!dateError} />
+                  {dateError && <span className="text-[10px] uppercase tracking-wider text-red-600 dark:text-red-400 mt-1 font-bold animate-pulse">Nesmie byť pred začiatkom</span>}
+                </div>
+                <SelectField label="Štát vyslania" id="statVyslania" name="statVyslania" value={formData.statVyslania} onChange={handleChange} options={COUNTRIES.filter(c => c !== 'Slovenská republika')} required />
+              </div>
+
+              <InputField
+                label="Popis činnosti počas vyslania"
+                id="popisCinnosti"
+                name="popisCinnosti"
+                type="textarea"
+                value={formData.popisCinnosti}
+                onChange={handleChange}
+                required
+                gridSpan="md:col-span-3"
+              />
+
+              {/* Otázky Q5/Q6 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Predpokladáte výkon SZČO na Slovensku aj po ukončení vyslania?
+                  </p>
+                  <CheckboxField label="Áno" id="obvykleMiestoVykonuCinnosti" name="obvykleMiestoVykonuCinnosti" checked={formData.obvykleMiestoVykonuCinnosti} onChange={handleChange} />
+                </div>
+                <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Zachováte si počas vyslania priestory potrebné na výkon SZČO na Slovensku?
+                  </p>
+                  <CheckboxField label="Áno" id="zachovaPriestory" name="zachovaPriestory" checked={formData.zachovaPriestory} onChange={handleChange} />
+                </div>
+              </div>
+
+              {/* Hlavné miesto vyslania */}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                <h3 className="text-lg font-medium mb-4">Hlavné miesto výkonu činnosti</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <InputField label="Obchodné meno prijímajúcej osoby" id="obchodneMenoPrijimajucejOsoby" name="obchodneMenoPrijimajucejOsoby" value={formData.obchodneMenoPrijimajucejOsoby} onChange={handleChange} gridSpan="md:col-span-2" />
+                  <InputField label="IČO prijímajúcej osoby" id="icoPrijimajucejOsoby" name="icoPrijimajucejOsoby" value={formData.icoPrijimajucejOsoby} onChange={handleChange} />
+                  <AddressFields address={formData.adresaVyslania} namePrefix="adresaVyslania" onChange={handleChange} showStat={false} />
+                </div>
+              </div>
+
+              {/* Predošlá činnosť v štáte vyslania */}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                  <CheckboxField
+                    label="SZČO už v minulosti vykonávala činnosť v štáte, do ktorého je vyslaná"
+                    id="cinnostVStatePredVyslanim"
+                    name="cinnostVStatePredVyslanim"
+                    checked={formData.cinnostVStatePredVyslanim}
+                    onChange={handleChange}
+                  />
+                  {formData.cinnostVStatePredVyslanim && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
+                      <InputField label="Od" id="cinnostVStatePredOd" name="cinnostVStatePredOd" type="date" value={formData.cinnostVStatePredOd} onChange={handleChange} />
+                      <InputField label="Do" id="cinnostVStatePredDo" name="cinnostVStatePredDo" type="date" value={formData.cinnostVStatePredDo} onChange={handleChange} />
                     </div>
-                )}
+                  )}
+                </div>
+              </div>
+
+              {/* Ďalšie miesta */}
+              {(formData.dalsieMiestaVyslania || []).map((miesto, index) => (
+                <div key={index} className="border border-gray-200 dark:border-gray-600 rounded-xl p-4 mt-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="font-medium text-gray-700 dark:text-gray-300">Ďalšie miesto #{index + 1}</h4>
+                    <button type="button" onClick={() => {
+                      setFormData(prev => ({ ...prev, dalsieMiestaVyslania: prev.dalsieMiestaVyslania.filter((_, i) => i !== index) }));
+                    }} className="text-red-500 hover:text-red-700 text-sm">Odstrániť</button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <InputField
+                      label="Obchodné meno"
+                      id={`miesto-${index}-obchodneMeno`}
+                      name={`dalsieMiestaVyslania.${index}.obchodneMeno`}
+                      value={miesto.obchodneMeno}
+                      onChange={(e) => {
+                        const newMiesta = [...formData.dalsieMiestaVyslania];
+                        newMiesta[index] = { ...newMiesta[index], obchodneMeno: e.target.value };
+                        setFormData(prev => ({ ...prev, dalsieMiestaVyslania: newMiesta }));
+                      }}
+                      gridSpan="md:col-span-2"
+                    />
+                    <InputField
+                      label="IČO"
+                      id={`miesto-${index}-ico`}
+                      name={`dalsieMiestaVyslania.${index}.ico`}
+                      value={miesto.ico}
+                      onChange={(e) => {
+                        const newMiesta = [...formData.dalsieMiestaVyslania];
+                        newMiesta[index] = { ...newMiesta[index], ico: e.target.value };
+                        setFormData(prev => ({ ...prev, dalsieMiestaVyslania: newMiesta }));
+                      }}
+                    />
+                    <AddressFields
+                      address={miesto.adresa}
+                      namePrefix={`dalsieMiestaVyslania.${index}.adresa`}
+                      onChange={(e) => {
+                        const field = e.target.name.split('.').pop()!;
+                        const newMiesta = [...formData.dalsieMiestaVyslania];
+                        newMiesta[index] = { ...newMiesta[index], adresa: { ...newMiesta[index].adresa, [field]: e.target.value } };
+                        setFormData(prev => ({ ...prev, dalsieMiestaVyslania: newMiesta }));
+                      }}
+                      showStat={false}
+                    />
+                  </div>
+                </div>
+              ))}
+
+              <button type="button" onClick={() => setFormData(prev => ({ ...prev, dalsieMiestaVyslania: [...(prev.dalsieMiestaVyslania || []), emptyMiesto()] }))}
+                className="mt-3 inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:hover:bg-blue-800 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+                </svg>
+                Pridať ďalšie miesto výkonu činnosti
+              </button>
             </div>
-            <InputField label="Obchodné meno prijímajúcej osoby" id="obchodneMenoPrijimajucejOsoby" name="obchodneMenoPrijimajucejOsoby" value={formData.obchodneMenoPrijimajucejOsoby} onChange={handleChange} required gridSpan="md:col-span-3" />
-            <div className="md:col-span-3 mt-4 border-t border-gray-200 dark:border-gray-700 pt-6">
-                 <h3 className="text-lg font-medium mb-4">Adresa v štáte vyslania</h3>
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <SelectField label="Štát" id="statVyslania" name="statVyslania" value={formData.statVyslania} onChange={handleChange} required options={COUNTRIES} />
-                    <AddressFields address={formData.adresaVyslania} namePrefix="adresaVyslania" onChange={handleChange} required showStat={false} />
-                 </div>
-                 
-                 {/* Ďalšie miesta vyslania */}
-                 <div className="mt-6 border-t border-gray-100 dark:border-gray-700 pt-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Ďalšie miesta výkonu činnosti (voliteľné)</label>
-                    {formData.dalsieMiestaVyslania && formData.dalsieMiestaVyslania.map((miesto, index) => (
-                        <div key={index} className="relative mt-4 p-4 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-slate-700">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const newMiesta = [...formData.dalsieMiestaVyslania];
-                                    newMiesta.splice(index, 1);
-                                    setFormData(prev => ({ ...prev, dalsieMiestaVyslania: newMiesta }));
-                                }}
-                                className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"
-                                title="Odstrániť miesto"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                </svg>
-                            </button>
-                            <h4 className="text-sm font-medium mb-3 text-gray-500 dark:text-gray-400">Miesto č. {index + 2}</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <AddressFields 
-                                    address={miesto}
-                                    namePrefix={`dalsieMiestaVyslania.${index}`}
-                                    onChange={(e) => {
-                                        const { name, value } = e.target;
-                                        // name format: dalsieMiestaVyslania.0.ulica
-                                        const parts = name.split('.');
-                                        const field = parts[2]; // ulica
-                                        if (field) {
-                                            const newMiesta = [...formData.dalsieMiestaVyslania];
-                                            newMiesta[index] = { ...newMiesta[index], [field]: value };
-                                            setFormData(prev => ({ ...prev, dalsieMiestaVyslania: newMiesta }));
-                                        }
-                                    }}
-                                    showStat={false}
-                                />
-                            </div>
-                        </div>
-                    ))}
-                    
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setFormData(prev => ({
-                                ...prev,
-                                dalsieMiestaVyslania: [
-                                    ...(prev.dalsieMiestaVyslania || []),
-                                    { ...emptyAddress, stat: formData.statVyslania || 'Rakúsko' }
-                                ]
-                            }));
-                        }}
-                        className="mt-3 inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-blue-900 dark:text-blue-200 dark:hover:bg-blue-800 transition-colors"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-                        </svg>
-                        Pridať ďalšie miesto výkonu činnosti
-                    </button>
-                 </div>
+          </FormSection>
+
+          {/* ── 4. Dokumenty a ostatné ── */}
+          <FormSection title="4. Dokumenty a ostatné informácie">
+
+            {/* Vydaný v inej krajine */}
+            <div className="md:col-span-3 p-4 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-gray-700">
+              <CheckboxField label="Bol mi vydaný formulár E101/PD A1 v inej krajine EÚ" id="vydanyVInejKrajine" name="vydanyVInejKrajine" checked={formData.vydanyVInejKrajine} onChange={handleChange} />
+              {formData.vydanyVInejKrajine && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
+                  <InputField label="Platnosť od" id="vydanyVInejKrajineOd" name="vydanyVInejKrajineOd" type="date" value={formData.vydanyVInejKrajineOd} onChange={handleChange} />
+                  <InputField label="Platnosť do" id="vydanyVInejKrajineDo" name="vydanyVInejKrajineDo" type="date" value={formData.vydanyVInejKrajineDo} onChange={handleChange} />
+                  <InputField label="Dátum vydania" id="vydanyVInejKrajineDatum" name="vydanyVInejKrajineDatum" type="date" value={formData.vydanyVInejKrajineDatum} onChange={handleChange} />
+                  <InputField label="Vydávajúca inštitúcia" id="vydanyVInejKrajineInstitucia" name="vydanyVInejKrajineInstitucia" value={formData.vydanyVInejKrajineInstitucia} onChange={handleChange} gridSpan="md:col-span-2" />
+                </div>
+              )}
             </div>
-            <SelectField 
-              label="Príslušná pobočka SP" 
-              id="pobocka" 
-              name="pobocka" 
-              value={formData.pobocka} 
-              onChange={handleChange} 
-              options={BRANCH_OFFICES.map(b => b.name)} 
-              values={BRANCH_OFFICES.map(b => b.code)}
-            />
+
+            <SelectField label="Príslušná pobočka SP" id="pobocka" name="pobocka" value={formData.pobocka} onChange={handleChange} options={BRANCH_OFFICES.map(b => b.name)} values={BRANCH_OFFICES.map(b => b.code)} />
             <InputField label="Doplňujúce informácie" id="poznamka" name="poznamka" type="textarea" value={formData.poznamka} onChange={handleChange} gridSpan="md:col-span-2" />
           </FormSection>
-          
+
+          {/* ── Tlačidlá ── */}
           <div className="mt-12 flex flex-col items-center justify-center pb-12 gap-4">
             {dateError && (
-                <p className="text-red-600 dark:text-red-400 font-medium mb-4 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                    {dateError}
-                </p>
+              <p className="text-red-600 dark:text-red-400 font-medium mb-4 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                {dateError}
+              </p>
             )}
             <div className="flex flex-col sm:flex-row gap-4 items-center">
-              <button 
-                  type="submit" 
-                  disabled={!!dateError}
-                  className={`font-bold py-4 px-12 rounded-2xl shadow-xl transition-all ${dateError ? 'bg-gray-400 cursor-not-allowed opacity-50' : 'bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 active:scale-95'}`}
-              >
+              <button type="submit" disabled={!!dateError}
+                className={`font-bold py-4 px-12 rounded-2xl shadow-xl transition-all ${dateError ? 'bg-gray-400 cursor-not-allowed opacity-50' : 'bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 active:scale-95'}`}>
                 Generovať a stiahnuť XML
               </button>
-              <button
-                  type="button"
-                  disabled={!!dateError || pdfLoading}
-                  onClick={handleDownloadPdf}
-                  className={`flex items-center gap-2 font-bold py-4 px-10 rounded-2xl shadow-xl transition-all ${dateError || pdfLoading ? 'bg-gray-400 cursor-not-allowed opacity-50 text-white' : 'bg-red-600 hover:bg-red-700 text-white hover:scale-105 active:scale-95'}`}
-              >
-                {pdfLoading ? (
-                  <>
-                    <SpinnerIcon />
-                    Generujem PDF...
-                  </>
-                ) : (
-                  <>
-                    <PdfIcon />
-                    Stiahnuť PDF žiadosť
-                  </>
-                )}
+              <button type="button" disabled={!!dateError || pdfLoading} onClick={handleDownloadPdf}
+                className={`flex items-center gap-2 font-bold py-4 px-10 rounded-2xl shadow-xl transition-all ${dateError || pdfLoading ? 'bg-gray-400 cursor-not-allowed opacity-50 text-white' : 'bg-red-600 hover:bg-red-700 text-white hover:scale-105 active:scale-95'}`}>
+                {pdfLoading ? (<><SpinnerIcon />Generujem PDF...</>) : (<><PdfIcon />Stiahnuť PDF žiadosť</>)}
               </button>
             </div>
             {pdfError && (

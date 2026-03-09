@@ -8,6 +8,12 @@ export interface Address {
   stat: string;
 }
 
+export interface MiestoVyslania {
+  obchodneMeno: string;
+  ico: string;
+  adresa: Address;
+}
+
 export interface FormDataState {
   // Ziadatel
   titulPred: string;
@@ -20,7 +26,7 @@ export interface FormDataState {
   miestoNarodenia: string;
   statNarodenia: string;
   statnaPrislusnost: string;
-  pohlavie: 'Muž' | 'Žena' | ''; // UI values, mapped to 1/2 in XML
+  pohlavie: 'Muž' | 'Žena' | '';
   adresaPobytu: Address;
   email: string;
   telefon: string;
@@ -38,29 +44,55 @@ export interface FormDataState {
   datumZaciatkuCinnosti: string;
   identifikacneCisloVSocialnejPoistovni: string;
   cinnostSZCONaSlovensku: string;
-  skNace: string; // Kód ekonomickej klasifikácie
-  dostupneCinnosti?: string[]; // Zoznam činností z RPO
+  skNace: string;
+  dostupneCinnosti?: string[];
 
   zadatAdresuMiestaPodnikania: boolean;
   adresaMiestaPodnikania: Address;
 
+  // Prerušenie živnosti
+  prerusenieZivnosti: boolean;
+  prerusenieOd: string;
+  prerusenieDo: string;
+
+  // Skutočná činnosť na Slovensku
+  skutocnaCinnostOd: string;
+  skutocnaCinnostDo: string;
+  skutocnaCinnostHodinMesacne: string;
+
+  // Predošlá činnosť v štáte vyslania
+  cinnostVStatePredVyslanim: boolean;
+  cinnostVStatePredOd: string;
+  cinnostVStatePredDo: string;
+
   // Vyslanie
   statVyslania: string;
-  adresaVyslania: Address;
-  dalsieMiestaVyslania: Address[]; // Zoznam ďalších miest vyslania
+  dalsieMiestaVyslania: MiestoVyslania[];
   datumZaciatkuVyslania: string;
   datumKoncaVyslania: string;
   obchodneMenoPrijimajucejOsoby: string;
   icoPrijimajucejOsoby: string;
+  adresaVyslania: Address;
   popisCinnosti: string;
   
-  obvykleMiestoVykonuCinnosti: boolean;
+  // Otázky Q5/Q6
+  obvykleMiestoVykonuCinnosti: boolean;  // EndingOfSending - predpokladá výkon po ukončení
+  zachovaPriestory: boolean;             // RetainingPremises - zachová priestory
+
   nahradenieOsoby: boolean;
   vykonavanieCinnostiPreInuOsobu: boolean;
   najomPracovnejSily: boolean;
+
+  // Dokument A1 vydaný
+  // Vydaný v inej krajine
+  vydanyVInejKrajine: boolean;
+  vydanyVInejKrajineOd: string;
+  vydanyVInejKrajineDo: string;
+  vydanyVInejKrajineDatum: string;
+  vydanyVInejKrajineInstitucia: string;
   
   // Ostatne
-  pobocka: string; // Kód pobočky SP
+  pobocka: string;
   poznamka: string;
   isForeigner: boolean;
 }

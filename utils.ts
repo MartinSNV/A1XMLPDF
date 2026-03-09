@@ -1,5 +1,5 @@
 
-import { FormDataState, Address } from './types';
+import { FormDataState, Address, MiestoVyslania } from './types';
 import { COUNTRY_MAP, NACE_CATEGORIES } from './constants';
 
 export const escapeXml = (unsafe: string): string => {
@@ -53,7 +53,6 @@ const renderPhysicalAddress = (addr: Address) => `
 
 const renderAffix = (tagName: string, position: string, value: string, codelistCode: string) => {
   if (!value) return '';
-  // Simple mapping for common titles to codes (not exhaustive but better than hardcoded 01)
   const titleMap: Record<string, string> = {
     'Bc.': '01', 'Mgr.': '02', 'Ing.': '03', 'MUDr.': '04', 'MVDr.': '05',
     'PaedDr.': '06', 'PharmDr.': '07', 'PhDr.': '08', 'JUDr.': '09', 'RNDr.': '10',
@@ -61,7 +60,6 @@ const renderAffix = (tagName: string, position: string, value: string, codelistC
     'PhD.': '01', 'CSc.': '02', 'DrSc.': '03', 'MBA': '04', 'MPH': '05', 'LL.M.': '06'
   };
   const itemCode = titleMap[value] || '01';
-  
   return `
     <Affix position="${position}">
       <Codelist>
@@ -131,12 +129,29 @@ export const generateA1Xml = (formData: FormDataState): void => {
       </ID>
     </PersonData>
     <SzcoDateStart>${escapeXml(formData.datumZaciatkuCinnosti)}</SzcoDateStart>
+    ${formData.prerusenieZivnosti ? `
+    <Suspension>
+      <SuspensionValue>true</SuspensionValue>
+      <Period>
+        <Start>${escapeXml(formData.prerusenieOd)}</Start>
+        <End>${escapeXml(formData.prerusenieDo)}</End>
+      </Period>
+    </Suspension>` : `
+    <Suspension>
+      <SuspensionValue>false</SuspensionValue>
+    </Suspension>`}
     <SZCO>
       <ActivityBeforeSending>${escapeXml(formData.cinnostSZCONaSlovensku)}</ActivityBeforeSending>
       <ActivityDuringSending>${escapeXml(formData.popisCinnosti)}</ActivityDuringSending>
-      <EndingOfSending>true</EndingOfSending>
-      <RetainingPremises>true</RetainingPremises>
+      <EndingOfSending>${formData.obvykleMiestoVykonuCinnosti}</EndingOfSending>
+      <RetainingPremises>${formData.zachovaPriestory}</RetainingPremises>
     </SZCO>
+    ${formData.skutocnaCinnostOd && formData.skutocnaCinnostDo ? `
+    <RealActivityInSlovakia>
+      <Start>${escapeXml(formData.skutocnaCinnostOd)}</Start>
+      <End>${escapeXml(formData.skutocnaCinnostDo)}</End>
+      <Amount>${escapeXml(formData.skutocnaCinnostHodinMesacne || '0')}</Amount>
+    </RealActivityInSlovakia>` : ''}
     <Places>
       ${renderCodelist('Country', 'CL000086', COUNTRY_MAP[formData.statVyslania] || '276', formData.statVyslania)}
       <Place>
@@ -155,22 +170,45 @@ export const generateA1Xml = (formData: FormDataState): void => {
                 </CodelistItem>
               </Codelist>
             </IdentifierType>
-            <IdentifierValue>${escapeXml(formData.icoPrijimajucejOsoby || '00000000')}</IdentifierValue>
+            <IdentifierValue>${escapeXml(formData.icoPrijimajucejOsoby || '-')}</IdentifierValue>
           </ID>
         </PersonData>
       </Place>
-      ${formData.dalsieMiestaVyslania && formData.dalsieMiestaVyslania.map(miesto => `
+      ${(formData.dalsieMiestaVyslania || []).map((miesto: MiestoVyslania) => `
       <Place>
         <PersonData>
-          ${renderPhysicalAddress(miesto)}
+          <CorporateBody>
+            <CorporateBodyFullName>${escapeXml(miesto.obchodneMeno)}</CorporateBodyFullName>
+          </CorporateBody>
+          ${renderPhysicalAddress(miesto.adresa)}
+          <ID>
+            <IdentifierType>
+              <Codelist>
+                <CodelistCode>CL004001</CodelistCode>
+                <CodelistItem>
+                  <ItemCode>7</ItemCode>
+                  <ItemName>IČO (Identifikačné číslo organizácie)</ItemName>
+                </CodelistItem>
+              </Codelist>
+            </IdentifierType>
+            <IdentifierValue>${escapeXml(miesto.ico || '-')}</IdentifierValue>
+          </ID>
         </PersonData>
-      </Place>
-      `).join('')}
+      </Place>`).join('')}
     </Places>
     <SendingDuration>
       <Start>${escapeXml(formData.datumZaciatkuVyslania)}</Start>
       <End>${escapeXml(formData.datumKoncaVyslania)}</End>
     </SendingDuration>
+    ${formData.cinnostVStatePredVyslanim ? `
+    <PreviousSendingToState>
+      <Value>true</Value>
+      <Period>
+        <Start>${escapeXml(formData.cinnostVStatePredOd)}</Start>
+        <End>${escapeXml(formData.cinnostVStatePredDo)}</End>
+      </Period>
+    </PreviousSendingToState>` : `
+    <PreviousSendingToState><Value>false</Value></PreviousSendingToState>`}
     ${(() => {
       const nace = NACE_CATEGORIES.find(n => n.code === formData.skNace);
       return renderCodelist('EconomicClassification', 'ICL001013', formData.skNace || 'F', nace ? nace.name : 'F – Stavebníctvo');
@@ -178,7 +216,19 @@ export const generateA1Xml = (formData: FormDataState): void => {
     <DocumentIssued><Value>false</Value></DocumentIssued>
   </Posting>
   <OtherInformation>
-    <OtherCountryIssue><Value>false</Value></OtherCountryIssue>
+    ${formData.vydanyVInejKrajine ? `
+    <OtherCountryIssue>
+      <Value>true</Value>
+      <Document>
+        <IssueDate>
+          <Start>${escapeXml(formData.vydanyVInejKrajineOd)}</Start>
+          <End>${escapeXml(formData.vydanyVInejKrajineDo)}</End>
+        </IssueDate>
+        <DayOfIssue>${escapeXml(formData.vydanyVInejKrajineDatum)}</DayOfIssue>
+        <Institution>${escapeXml(formData.vydanyVInejKrajineInstitucia)}</Institution>
+      </Document>
+    </OtherCountryIssue>` : `
+    <OtherCountryIssue><Value>false</Value></OtherCountryIssue>`}
     <AdditionalInfo>${escapeXml(formData.poznamka)}</AdditionalInfo>
   </OtherInformation>
   <Date>${today}</Date>
