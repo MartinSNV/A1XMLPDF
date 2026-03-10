@@ -1,7 +1,41 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import { generateFilledPdf } from "./generatePdf.js";
+
+// Retry with exponential backoff — handles 429 rate limit from api.statistics.sk
+async function fetchWithRetry(
+  url: string,
+  maxRetries = 4,
+  baseDelayMs = 1000
+): Promise<any> {
+  let lastError: any;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Mozilla/5.0",
+        },
+        timeout: 15000,
+      });
+      return response.data;
+    } catch (err) {
+      const axiosErr = err as AxiosError;
+      const status = axiosErr.response?.status;
+      lastError = err;
+      const shouldRetry = status === 429 || (status !== undefined && status >= 500);
+      if (!shouldRetry || attempt === maxRetries) break;
+      const retryAfter = axiosErr.response?.headers?.["retry-after"];
+      const delayMs = retryAfter
+        ? parseInt(retryAfter) * 1000
+        : baseDelayMs * Math.pow(2, attempt) + Math.random() * 500;
+      console.log(`[Server] RPO attempt ${attempt + 1} failed (${status}), retrying in ${Math.round(delayMs)}ms...`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw lastError;
+}
 
 async function startServer() {
   const app = express();
@@ -40,16 +74,11 @@ async function startServer() {
         throw new Error("No content returned from Browserless");
       } catch (error: any) {
         console.error(`[Server] Browserless failed: ${error.message}`);
+        // fallthrough to direct request with retry
       }
     }
-    console.log(`[Server] Using direct Axios request for: ${url}`);
-    const response = await axios.get(url, {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "Mozilla/5.0",
-      },
-    });
-    return response.data;
+    // Direct request with retry logic (handles 429)
+    return fetchWithRetry(url);
   };
 
   // ── API routes ───────────────────────────────────────────────────────────
@@ -75,9 +104,13 @@ async function startServer() {
       const detailData = await fetchData(detailUrl, process.env.BROWSERLESS_API_KEY);
       res.json(detailData);
     } catch (error: any) {
+      const status = error.response?.status;
+      const message = status === 429
+        ? "RPO API dočasne obmedzuje požiadavky (rate limit). Skúste za chvíľu."
+        : "Failed to fetch entity from RPO";
       console.error("[Server] RPO Combined Error:", error.message);
-      res.status(error.response?.status || 500).json({
-        error: "Failed to fetch entity from RPO",
+      res.status(status || 500).json({
+        error: message,
         details: error.response?.data || error.message,
       });
     }
@@ -87,8 +120,10 @@ async function startServer() {
     try {
       const { identifier } = req.query;
       if (!identifier) return res.status(400).json({ error: "Missing identifier" });
-      const apiUrl = `https://api.statistics.sk/rpo/v1/search?identifier=${identifier}`;
-      const data = await fetchData(apiUrl, process.env.BROWSERLESS_API_KEY);
+      const data = await fetchData(
+        `https://api.statistics.sk/rpo/v1/search?identifier=${identifier}`,
+        process.env.BROWSERLESS_API_KEY
+      );
       res.json(data);
     } catch (error: any) {
       res.status(error.response?.status || 500).json({
@@ -102,8 +137,10 @@ async function startServer() {
     try {
       const { id } = req.params;
       if (!id) return res.status(400).json({ error: "Missing ID" });
-      const apiUrl = `https://api.statistics.sk/rpo/v1/entity/${id}?showHistoricalData=true&showOrganizationUnits=true`;
-      const data = await fetchData(apiUrl, process.env.BROWSERLESS_API_KEY);
+      const data = await fetchData(
+        `https://api.statistics.sk/rpo/v1/entity/${id}?showHistoricalData=true&showOrganizationUnits=true`,
+        process.env.BROWSERLESS_API_KEY
+      );
       res.json(data);
     } catch (error: any) {
       res.status(error.response?.status || 500).json({
@@ -131,7 +168,6 @@ async function startServer() {
   // ── Static / Vite ────────────────────────────────────────────────────────
   if (process.env.NODE_ENV === "production") {
     app.use(express.static("dist"));
-    // SPA fallback
     app.get("/{*splat}", (_req, res) => {
       res.sendFile("index.html", { root: "dist" });
     });

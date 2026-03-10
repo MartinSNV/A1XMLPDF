@@ -41,6 +41,17 @@ def koresp(d: dict) -> str:
     ]))
 
 
+def _addr_dorucenia(d: dict) -> str:
+    """Returns formatted delivery address only if user explicitly filled it in."""
+    if not d.get("zadatAdresuPrechodnehoPobytu"):
+        return ""
+    a = d.get("adresaPrechodnehoPobytu", {})
+    if not isinstance(a, dict):
+        return ""
+    cislo = "/".join(filter(None, [a.get("supisneCislo", ""), a.get("orientacneCislo", "")]))
+    return ", ".join(filter(None, [a.get("ulica", ""), cislo, a.get("obec", ""), a.get("psc", "")]))
+
+
 def fill(input_pdf: str, data_json: str, output_pdf: str):
     with open(data_json, encoding="utf-8") as f:
         d = json.load(f)
@@ -74,7 +85,7 @@ def fill(input_pdf: str, data_json: str, output_pdf: str):
         "telefon":               d.get("telefon", ""),
         "email":                 d.get("email", ""),
         "korespondencia":        koresp(d),
-        "adresaDoručenia":       d.get("adresaPrechodnehoPobytu", ""),
+        "adresaDoručenia":       _addr_dorucenia(d),
         "datumZaciatkuCinnosti": fmt_date(d.get("datumZaciatkuCinnosti", "")),
         "cinnostPredVyslanim":   d.get("cinnostSZCONaSlovensku", ""),
         # Page 2

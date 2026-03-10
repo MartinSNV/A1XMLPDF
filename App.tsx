@@ -155,7 +155,7 @@ const App: React.FC = () => {
             <div className="relative">
               <label htmlFor="ico-welcome" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">IČO podnikateľa</label>
               <div className="relative">
-                <input id="ico-welcome" name="ico" type="text" inputMode="numeric" placeholder="33852383" className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-700 border border-gray-300 dark:border-gray-600 rounded-xl outline-none text-lg tracking-wider dark:text-white" value={formData.ico} onChange={handleChange} />
+                <input id="ico-welcome" name="ico" type="text" inputMode="numeric" placeholder="Zadajte IČO" className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-700 border border-gray-300 dark:border-gray-600 rounded-xl outline-none text-lg tracking-wider dark:text-white" value={formData.ico} onChange={handleChange} />
                 <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
                   {rpoLoading ? <SpinnerIcon /> : icoFetchSuccess ? <CheckIcon /> : null}
                 </div>
