@@ -7,10 +7,11 @@ Requires: pypdf  (pip install pypdf)
 """
 import json
 import sys
-import os
+from datetime import date
 
 try:
     from pypdf import PdfReader, PdfWriter
+    from pypdf.generic import NameObject, TextStringObject, BooleanObject
 except ImportError:
     print("ERROR: pypdf is not installed. Run: pip install pypdf", file=sys.stderr)
     sys.exit(2)
@@ -22,7 +23,22 @@ def fmt_date(val: str) -> str:
         return ""
     if len(val) == 10 and val[4] == "-" and val[7] == "-":
         return val[8:10] + "." + val[5:7] + "." + val[0:4]
-    return val  # already in another format, return as-is
+    return val
+
+
+def addr_line(a: dict) -> str:
+    cislo = "/".join(filter(None, [a.get("supisneCislo", ""), a.get("orientacneCislo", "")]))
+    return " ".join(filter(None, [a.get("ulica", ""), cislo]))
+
+
+def koresp(d: dict) -> str:
+    if not d.get("zadatKorespodencnuAdresu"):
+        return ""
+    ka = d.get("korespodencnaAdresa", {})
+    cislo = "/".join(filter(None, [ka.get("supisneCislo", ""), ka.get("orientacneCislo", "")]))
+    return ", ".join(filter(None, [
+        ka.get("ulica", ""), cislo, ka.get("obec", ""), ka.get("psc", "")
+    ]))
 
 
 def fill(input_pdf: str, data_json: str, output_pdf: str):
@@ -32,100 +48,78 @@ def fill(input_pdf: str, data_json: str, output_pdf: str):
     reader = PdfReader(input_pdf)
     writer = PdfWriter(clone_from=reader)
 
-    # ── helpers ──────────────────────────────────────────────────────────────
-    def p1(fields):
-        writer.update_page_form_field_values(writer.pages[0], fields, auto_regenerate=True)
-
-    def p2(fields):
-        writer.update_page_form_field_values(writer.pages[1], fields, auto_regenerate=True)
-
-    def p3(fields):
-        writer.update_page_form_field_values(writer.pages[2], fields, auto_regenerate=True)
-
-    def addr_line(a):
-        cislo = "/".join(filter(None, [a.get("supisneCislo",""), a.get("orientacneCislo","")]))
-        return " ".join(filter(None, [a.get("ulica",""), cislo]))
-
-    # ── Page 1 ───────────────────────────────────────────────────────────────
-    addr = d.get("adresaPobytu", {})
-    p1({
-        "topmostSubform[0].Page1[0].fill_1[0]":  d.get("pobocka", ""),
-        "topmostSubform[0].Page1[0].Group1[0]":  "/0" if d.get("pohlavie") == "Muž" else "/1",
-        "topmostSubform[0].Page1[0].Text1[0]":   d.get("titulPred", ""),
-        "topmostSubform[0].Page1[0].Text2[0]":   d.get("meno", ""),
-        "topmostSubform[0].Page1[0].Text3[0]":   d.get("priezvisko", ""),
-        "topmostSubform[0].Page1[0].Text4[0]":   d.get("titulZa", ""),
-        "topmostSubform[0].Page1[0].Text5[0]":   fmt_date(d.get("datumNarodenia", "")),
-        "topmostSubform[0].Page1[0].Text6[0]":   d.get("miestoNarodenia", ""),
-        "topmostSubform[0].Page1[0].Text7[0]":   d.get("statnaPrislusnost", ""),
-        "topmostSubform[0].Page1[0].Text8[0]":   d.get("rodnePriezvisko", ""),
-        "topmostSubform[0].Page1[0].Text9[0]":   d.get("rodneCislo", ""),
-        "topmostSubform[0].Page1[0].Text10[0]":  d.get("ico", ""),
-        "topmostSubform[0].Page1[0].Text11[0]":  addr_line(addr),
-        "topmostSubform[0].Page1[0].Text12[0]":  addr.get("obec", ""),
-        "topmostSubform[0].Page1[0].Text13[0]":  addr.get("psc", ""),
-        "topmostSubform[0].Page1[0].Text14[0]":  addr.get("stat", ""),
-        "topmostSubform[0].Page1[0].Text15[0]":  d.get("telefon", ""),
-        "topmostSubform[0].Page1[0].Text16[0]":  d.get("email", ""),
-        "topmostSubform[0].Page1[0].Text17[0]":  "",
-        "topmostSubform[0].Page1[0].Text18[0]":  _koresp(d),
-        "topmostSubform[0].Page1[0].Text19[0]":  "",
-        "topmostSubform[0].Page1[0].Text20[0]":  fmt_date(d.get("datumZaciatkuCinnosti", "")),
-        "topmostSubform[0].Page1[0].Text21[0]":  d.get("cinnostSZCONaSlovensku", ""),
-    })
-
-    # ── Page 2 ───────────────────────────────────────────────────────────────
-    va = d.get("adresaVyslania", {})
-    omvc = d.get("obvykleMiestoVykonuCinnosti", False)
-    p2({
-        "topmostSubform[0].Page2[0].Tetx23[0]":  d.get("popisCinnosti", ""),
-        "topmostSubform[0].Page2[0].Group3[0]":  "/0" if omvc else "/1",
-        "topmostSubform[0].Page2[0].Group4[0]":  "/0" if omvc else "/1",
-        "topmostSubform[0].Page2[0].Tetx24[0]":  d.get("obchodneMenoPrijimajucejOsoby", ""),
-        "topmostSubform[0].Page2[0].Tetx25[0]":  d.get("icoPrijimajucejOsoby", ""),
-        "topmostSubform[0].Page2[0].Tetx26[0]":  addr_line(va),
-        "topmostSubform[0].Page2[0].Tetx27[0]":  va.get("obec", ""),
-        "topmostSubform[0].Page2[0].Tetx28[0]":  va.get("psc", ""),
-        "topmostSubform[0].Page2[0].Tetx29[0]":  va.get("stat", "") or d.get("statVyslania", ""),
-        "topmostSubform[0].Page2[0].Tetx30[0]":  "",
-        "topmostSubform[0].Page2[0].Text31[0]":  "",
-        "topmostSubform[0].Page2[0].od[0]":      fmt_date(d.get("datumZaciatkuVyslania", "")),
-        "topmostSubform[0].Page2[0].do[0]":      fmt_date(d.get("datumKoncaVyslania", "")),
-        "topmostSubform[0].Page2[0].Text32[0]":  d.get("skNace", ""),
-        "topmostSubform[0].Page2[0].Group5[0]":  "/1",
-        "topmostSubform[0].Page2[0].od_1[0]":    "",
-        "topmostSubform[0].Page2[0].do_1[0]":    "",
-        "topmostSubform[0].Page2[0].Group6[0]":  "/1",
-        "topmostSubform[0].Page2[0].od_2[0]":    "",
-        "topmostSubform[0].Page2[0].do_2[0]":    "",
-        "topmostSubform[0].Page2[0].Text33[0]":  "",
-        "topmostSubform[0].Page2[0].Text34[0]":  "",
-        "topmostSubform[0].Page2[0].Text35[0]":  d.get("poznamka", ""),
-    })
-
-    # ── Page 3 ───────────────────────────────────────────────────────────────
-    from datetime import date
+    addr  = d.get("adresaPobytu", {})
+    va    = d.get("adresaVyslania", {})
     today = date.today()
     today_str = f"{today.day:02d}.{today.month:02d}.{today.year}"
-    p3({
-        "topmostSubform[0].Page3[0].Text36[0]": d.get("miestoNarodenia", ""),
-        "topmostSubform[0].Page3[0].Text37[0]": today_str,
-    })
 
-    writer.set_need_appearances_writer(True)
+    # Map field names to values
+    values = {
+        # Page 1
+        "pobocka":               d.get("pobocka", ""),
+        "titulPred":             d.get("titulPred", ""),
+        "meno":                  d.get("meno", ""),
+        "priezvisko":            d.get("priezvisko", ""),
+        "titulZa":               d.get("titulZa", ""),
+        "datumNarodenia":        fmt_date(d.get("datumNarodenia", "")),
+        "miestoNarodenia":       d.get("miestoNarodenia", ""),
+        "statnaPrislusnost":     d.get("statnaPrislusnost", ""),
+        "rodnePriezvisko":       d.get("rodnePriezvisko", ""),
+        "rodneCislo":            d.get("rodneCislo", ""),
+        "ico":                   d.get("ico", ""),
+        "adresaUlica":           addr_line(addr),
+        "adresaObec":            addr.get("obec", ""),
+        "adresaPsc":             addr.get("psc", ""),
+        "adresaStat":            addr.get("stat", ""),
+        "telefon":               d.get("telefon", ""),
+        "email":                 d.get("email", ""),
+        "korespondencia":        koresp(d),
+        "adresaDoručenia":       d.get("adresaPrechodnehoPobytu", ""),
+        "datumZaciatkuCinnosti": fmt_date(d.get("datumZaciatkuCinnosti", "")),
+        "cinnostPredVyslanim":   d.get("cinnostSZCONaSlovensku", ""),
+        # Page 2
+        "popisCinnosti":         d.get("popisCinnosti", ""),
+        "nazovSubjektu":         d.get("obchodneMenoPrijimajucejOsoby", ""),
+        "icoSubjektu":           d.get("icoPrijimajucejOsoby", ""),
+        "vyslanieUlica":         addr_line(va),
+        "vyslanieObec":          va.get("obec", ""),
+        "vyslaniePsc":           va.get("psc", ""),
+        "vyslanieStat":          va.get("stat", "") or d.get("statVyslania", ""),
+        "kontaktnaOsoba":        "",
+        "lod":                   "",
+        "vyslanieOd":            fmt_date(d.get("datumZaciatkuVyslania", "")),
+        "vyslanieDo":            fmt_date(d.get("datumKoncaVyslania", "")),
+        "skNace":                d.get("skNace", ""),
+        "predoslaOd":            fmt_date(d.get("cinnostVStatePredOd", "")),
+        "predoslaDo":            fmt_date(d.get("cinnostVStatePredDo", "")),
+        "e101Od":                fmt_date(d.get("vydanyVInejKrajineOd", "")),
+        "e101Do":                fmt_date(d.get("vydanyVInejKrajineDo", "")),
+        "e101Dna":               fmt_date(d.get("vydanyVInejKrajineDatum", "")),
+        "e101Institucia":        d.get("vydanyVInejKrajineInstitucia", ""),
+        "poznamka":              d.get("poznamka", ""),
+        # Page 3
+        "miestoVyslania":        d.get("miestoNarodenia", ""),
+        "datumPodpisu":          today_str,
+    }
+
+    # Set /V directly on each annotation (avoids /DR font resource bug in pypdf)
+    for page in writer.pages:
+        if "/Annots" not in page:
+            continue
+        for annot_ref in page["/Annots"]:
+            annot = annot_ref.get_object()
+            fname = str(annot.get("/T", ""))
+            if fname in values:
+                annot[NameObject("/V")] = TextStringObject(values[fname])
+
+    # NeedAppearances = True → PDF viewer renders field values on open
+    root = writer._root_object
+    if "/AcroForm" in root:
+        root["/AcroForm"].get_object()[NameObject("/NeedAppearances")] = BooleanObject(True)
+
     with open(output_pdf, "wb") as f:
         writer.write(f)
     print("OK")
-
-
-def _koresp(d):
-    if not d.get("zadatKorespodencnuAdresu"):
-        return ""
-    ka = d.get("korespodencnaAdresa", {})
-    cislo = "/".join(filter(None, [ka.get("supisneCislo",""), ka.get("orientacneCislo","")]))
-    return ", ".join(filter(None, [
-        ka.get("ulica",""), cislo, ka.get("obec",""), ka.get("psc","")
-    ]))
 
 
 if __name__ == "__main__":
