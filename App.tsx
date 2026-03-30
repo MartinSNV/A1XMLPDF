@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import type { FormDataState, Address, MiestoVyslania } from './types';
+import type { FormDataState, Address, MiestoVyslania, UplatnitelnaFormDataState } from './types';
 import FormSection from './components/FormSection';
 import InputField from './components/InputField';
 import SelectField from './components/SelectField';
@@ -10,6 +10,7 @@ import { COUNTRIES, BRANCH_OFFICES, NACE_CATEGORIES, TITLES_BEFORE, TITLES_AFTER
 import { BRANCH_OFFICE_BY_PSC } from './psc_mapping';
 import { generateA1Xml, parseBirthDateFromRc } from './utils';
 import { useRpo } from './hooks/useRpo';
+import UplatnitelnaForm, { initialUplatnitelnaData } from './UplatnitelnaForm';
 
 const emptyAddress: Address = { ulica: '', supisneCislo: '', orientacneCislo: '', obec: '', psc: '', stat: 'Slovenská republika' };
 const emptyMiesto = (): MiestoVyslania => ({ obchodneMeno: '', ico: '', adresa: { ...emptyAddress, stat: '' } });
@@ -56,8 +57,9 @@ const PdfIcon = () => (
 );
 
 const App: React.FC = () => {
-  const [step, setStep] = useState<'welcome' | 'form'>('welcome');
+  const [step, setStep] = useState<'welcome' | 'select' | 'form' | 'uplatnitelna'>('welcome');
   const [formData, setFormData] = useState<FormDataState>(initialFormData);
+  const [uplatnitelnaData, setUplatnitelnaData] = useState<UplatnitelnaFormDataState>(initialUplatnitelnaData());
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const { loading: rpoLoading, error: rpoError, success: icoFetchSuccess } = useRpo(formData.ico, setFormData);
@@ -73,7 +75,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (icoFetchSuccess && step === 'welcome') {
-      const timer = setTimeout(() => setStep('form'), 1000);
+      const timer = setTimeout(() => setStep('select'), 1000);
       return () => clearTimeout(timer);
     }
   }, [icoFetchSuccess, step]);
@@ -172,7 +174,7 @@ const App: React.FC = () => {
                   <span className="text-gray-400 dark:text-gray-500">Zadajte IČO pre automatické vyhľadanie</span>
                 )}
               </div>
-              <button onClick={() => setStep('form')} className="w-full py-3 px-6 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-50 dark:hover:bg-slate-700 rounded-xl transition-all border border-transparent hover:border-blue-100 dark:hover:border-slate-600">
+              <button onClick={() => setStep('select')} className="w-full py-3 px-6 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-50 dark:hover:bg-slate-700 rounded-xl transition-all border border-transparent hover:border-blue-100 dark:hover:border-slate-600">
                 Pokračovať bez IČO
               </button>
             </div>
@@ -182,11 +184,145 @@ const App: React.FC = () => {
     );
   }
 
+  // ── Výber formulára ──────────────────────────────────────────────────────
+  if (step === 'select') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-800 p-4 transition-colors duration-500">
+        <ThemeSwitcher />
+        <div className="max-w-2xl w-full bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8">
+          <button onClick={() => setStep('welcome')}
+            className="mb-6 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Späť
+          </button>
+          <div className="text-center mb-8">
+            <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg text-white">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Vyberte typ žiadosti</h1>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              {formData.obchodneMeno ? `Údaje pre ${formData.obchodneMeno} sú načítané.` : 'Vyberte formulár, ktorý chcete vyplniť.'}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Karta 1 – Vyslanie */}
+            <button onClick={() => setStep('form')}
+              className="group text-left p-6 rounded-2xl border-2 border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-400 transition-all hover:shadow-lg hover:-translate-y-1 bg-white dark:bg-slate-800">
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/40 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-600 transition-colors">
+                <svg className="w-6 h-6 text-blue-600 dark:text-blue-400 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                PD A1 – Vyslanie
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                Žiadosť o vystavenie prenosného dokumentu A1 z dôvodu vyslania SZČO do iného členského štátu EÚ.
+              </p>
+              <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 group-hover:gap-2 transition-all">
+                Otvoriť formulár
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </button>
+
+            {/* Karta 2 – Uplatniteľná legislatíva */}
+            <button onClick={() => {
+              setUplatnitelnaData(initialUplatnitelnaData({
+                meno: formData.meno,
+                priezvisko: formData.priezvisko,
+                rodnePriezvisko: formData.rodnePriezvisko,
+                titulPred: formData.titulPred,
+                titulZa: formData.titulZa,
+                rodneCislo: formData.rodneCislo,
+                datumNarodenia: formData.datumNarodenia,
+                miestoNarodenia: formData.miestoNarodenia,
+                statNarodenia: formData.statNarodenia,
+                statnaPrislusnost: formData.statnaPrislusnost,
+                pohlavie: formData.pohlavie,
+                adresaPobytu: { ...formData.adresaPobytu },
+                email: formData.email,
+                telefon: formData.telefon,
+                pobytovyPreukaz: formData.pobytovyPreukaz,
+                ico: formData.ico,
+                obchodneMeno: formData.obchodneMeno,
+                adresaMiestaPodnikania: { ...formData.adresaMiestaPodnikania },
+                skNace: formData.skNace,
+                pobocka: formData.pobocka,
+                isForeigner: formData.isForeigner,
+              }));
+              setStep('uplatnitelna');
+            }}
+              className="group text-left p-6 rounded-2xl border-2 border-gray-200 dark:border-gray-700 hover:border-green-500 dark:hover:border-green-400 transition-all hover:shadow-lg hover:-translate-y-1 bg-white dark:bg-slate-800">
+              <div className="w-12 h-12 bg-green-100 dark:bg-green-900/40 rounded-xl flex items-center justify-center mb-4 group-hover:bg-green-600 transition-colors">
+                <svg className="w-6 h-6 text-green-600 dark:text-green-400 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors">
+                Uplatniteľná legislatíva
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                Žiadosť o určenie uplatniteľnej legislatívy pre SZČO vykonávajúcu činnosť vo viacerých štátoch EÚ.
+              </p>
+              <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-green-600 dark:text-green-400 group-hover:gap-2 transition-all">
+                Otvoriť formulár
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Formulár: Uplatniteľná legislatíva ──────────────────────────────────
+  if (step === 'uplatnitelna') {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-300">
+        <ThemeSwitcher />
+        <div className="fixed top-4 left-4 z-10">
+          <button onClick={() => setStep('select')}
+            className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-green-600 transition-colors"
+            title="Späť na výber formulára">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        </div>
+        <main className="max-w-5xl mx-auto px-4 pt-16 pb-8">
+          <div className="mb-8 text-center">
+            <span className="inline-flex items-center gap-2 px-4 py-1.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full text-sm font-semibold mb-3">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Žiadosť o určenie uplatniteľnej legislatívy
+            </span>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              Uplatniteľná legislatíva – SZČO
+            </h1>
+            <p className="text-gray-500 dark:text-gray-400 mt-2 text-sm">
+              Vyplňte formulár a stiahnite XML pre podanie na Sociálnu poisťovňu
+            </p>
+          </div>
+          <UplatnitelnaForm formData={uplatnitelnaData} setFormData={setUplatnitelnaData} />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-300">
       <ThemeSwitcher />
       <div className="fixed top-4 left-4 z-10">
-        <button onClick={() => { setFormData(initialFormData); setStep('welcome'); }}
+        <button onClick={() => { setFormData(initialFormData); setStep('select'); }}
           className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-red-600 transition-colors"
           title="Resetovať formulár a vrátiť sa na úvod">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -226,6 +362,14 @@ const App: React.FC = () => {
           <FormSection title="2. Podnikanie na Slovensku">
             <InputField label="IČO" id="ico" name="ico" inputMode="numeric" value={formData.ico} onChange={handleChange} required />
             <InputField label="Obchodné meno" id="obchodneMeno" name="obchodneMeno" value={formData.obchodneMeno} onChange={handleChange} required gridSpan="md:col-span-2" />
+
+            <div className="md:col-span-3 mt-4 p-4 border border-gray-100 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-slate-800">
+              <h3 className="text-lg font-medium mb-4">Adresa miesta podnikania</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <AddressFields address={formData.adresaMiestaPodnikania} namePrefix="adresaMiestaPodnikania" onChange={handleChange} required />
+              </div>
+            </div>
+
             <InputField label="Dátum začiatku činnosti SZČO" id="datumZaciatkuCinnosti" name="datumZaciatkuCinnosti" type="date" value={formData.datumZaciatkuCinnosti} onChange={handleChange} required />
             <SelectField label="SK NACE (Ekonomická činnosť)" id="skNace" name="skNace" value={formData.skNace} onChange={handleChange} options={NACE_CATEGORIES.map(n => n.name)} />
             <InputField
@@ -261,12 +405,6 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="md:col-span-3 mt-4 p-4 border border-gray-100 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-slate-800">
-              <h3 className="text-lg font-medium mb-4">Adresa miesta podnikania</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <AddressFields address={formData.adresaMiestaPodnikania} namePrefix="adresaMiestaPodnikania" onChange={handleChange} required />
-              </div>
-            </div>
           </FormSection>
 
           {/* ── 3. Vyslanie ── */}
