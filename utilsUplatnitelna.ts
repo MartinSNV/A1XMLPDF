@@ -55,7 +55,7 @@ export const generateUplatnitelnaXml = (formData: UplatnitelnaFormDataState): vo
   const renderOtherCountry = (podiel: number, krajina: string) => `
       <OtherCountry>
         <Percentage>${podiel}</Percentage>
-        <n>${codelist('', 'CL000086', countryCode(krajina), krajina)}</n>
+        <Name>${codelist('', 'CL000086', countryCode(krajina), krajina)}</Name>
       </OtherCountry>`;
 
   const workTimePred = `<InSlovakia>${formData.casovyPodielSKPred}</InSlovakia>`

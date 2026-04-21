@@ -1,4 +1,3 @@
-
 import { FormDataState, Address, MiestoVyslania } from './types';
 import { COUNTRY_MAP, NACE_CATEGORIES } from './constants';
 
@@ -146,12 +145,11 @@ export const generateA1Xml = (formData: FormDataState): void => {
       <EndingOfSending>${formData.obvykleMiestoVykonuCinnosti}</EndingOfSending>
       <RetainingPremises>${formData.zachovaPriestory}</RetainingPremises>
     </SZCO>
-    ${formData.skutocnaCinnostOd && formData.skutocnaCinnostDo ? `
     <RealActivityInSlovakia>
-      <Start>${escapeXml(formData.skutocnaCinnostOd)}</Start>
-      <End>${escapeXml(formData.skutocnaCinnostDo)}</End>
+      <Start>${escapeXml(formData.skutocnaCinnostOd || formData.datumZaciatkuCinnosti)}</Start>
+      <End>${escapeXml(formData.skutocnaCinnostDo || formData.datumZaciatkuVyslania)}</End>
       <Amount>${escapeXml(formData.skutocnaCinnostHodinMesacne || '0')}</Amount>
-    </RealActivityInSlovakia>` : ''}
+    </RealActivityInSlovakia>
     <Places>
       ${renderCodelist('Country', 'CL000086', COUNTRY_MAP[formData.statVyslania] || '276', formData.statVyslania)}
       <Place>
@@ -229,7 +227,7 @@ export const generateA1Xml = (formData: FormDataState): void => {
       </Document>
     </OtherCountryIssue>` : `
     <OtherCountryIssue><Value>false</Value></OtherCountryIssue>`}
-    <AdditionalInfo>${escapeXml(formData.poznamka)}</AdditionalInfo>
+    ${formData.poznamka ? `<AdditionalInfo>${escapeXml(formData.poznamka)}</AdditionalInfo>` : ''}
   </OtherInformation>
   <Date>${today}</Date>
   <Declaration>
