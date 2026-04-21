@@ -1,7 +1,40 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import axios, { AxiosError } from "axios";
+import { spawn } from "child_process";
+import { writeFile, unlink } from "fs/promises";
+import path from "path";
+import os from "os";
+import { fileURLToPath } from "url";
 import { generateFilledPdf } from "./generatePdf.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ── XML Validácia cez validate_xml.py ────────────────────────────────────────
+async function validateXml(xmlString: string, typ: "vyslanie" | "uplatnitelna"): Promise<{ valid: boolean; errors: string[] }> {
+  const tmpXml = path.join(os.tmpdir(), `validate-${Date.now()}.xml`);
+  try {
+    await writeFile(tmpXml, xmlString, "utf-8");
+    const scriptPath = path.join(__dirname, "validate_xml.py");
+    const result = await new Promise<string>((resolve, reject) => {
+      const proc = spawn("python3", [scriptPath, tmpXml, typ]);
+      let out = "";
+      let err = "";
+      proc.stdout.on("data", (d) => { out += d.toString(); });
+      proc.stderr.on("data", (d) => { err += d.toString(); });
+      proc.on("close", (code) => {
+        if (out) resolve(out);
+        else reject(new Error(err || `Validácia zlyhala s kódom ${code}`));
+      });
+      proc.on("error", reject);
+    });
+    return JSON.parse(result);
+  } catch (e: any) {
+    return { valid: false, errors: [`Chyba validácie: ${e.message}`] };
+  } finally {
+    await unlink(tmpXml).catch(() => {});
+  }
+}
 
 // Retry with exponential backoff — handles 429 rate limit from api.statistics.sk
 async function fetchWithRetry(
@@ -147,6 +180,17 @@ async function startServer() {
         error: "Failed to fetch entity detail",
         details: error.response?.data || error.message,
       });
+    }
+  });
+
+  app.post("/api/validate-xml", async (req, res) => {
+    try {
+      const { xml, typ } = req.body as { xml: string; typ: "vyslanie" | "uplatnitelna" };
+      if (!xml || !typ) return res.status(400).json({ error: "Chýba xml alebo typ" });
+      const result = await validateXml(xml, typ);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ valid: false, errors: [err.message] });
     }
   });
 
