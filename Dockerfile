@@ -34,9 +34,12 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
 COPY server.ts generatePdf.ts types.ts ./
 COPY fill_a1_pdf.py ./
+COPY prisma ./prisma
 
 EXPOSE 3000
 
 ENV NODE_ENV=production
+
+RUN npx prisma generate
 
 CMD ["npm", "run", "start"]

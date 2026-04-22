@@ -7,6 +7,15 @@ import path from "path";
 import os from "os";
 import { fileURLToPath } from "url";
 import { generateFilledPdf } from "./generatePdf.js";
+import pg from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "./generated/prisma/client.js";
+
+const { Pool } = pg;
+const prisma: PrismaClient | null = process.env.DATABASE_URL
+  ? new PrismaClient({ adapter: new PrismaPg(new Pool({ connectionString: process.env.DATABASE_URL })) })
+  : null;
+if (!prisma) console.warn("[DB] DATABASE_URL not set – running without database");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -197,6 +206,18 @@ async function startServer() {
   app.post("/api/generate-pdf", async (req, res) => {
     try {
       const pdfBuffer = await generateFilledPdf(req.body);
+
+      prisma?.documentBundle.create({
+        data: {
+          formType: "PD_A1",
+          status: "GENERATED",
+          ico: req.body.ico || "",
+          companyName: req.body.obchodneMeno || "",
+          xmlContent: "",
+          metadata: req.body,
+        },
+      }).catch((err: any) => console.error("[DB] Failed to save bundle:", err.message));
+
       res.set({
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="ziadost-A1-SZCO.pdf"`,
@@ -206,6 +227,83 @@ async function startServer() {
     } catch (err: any) {
       console.error("[PDF] Generation failed:", err.message);
       res.status(500).json({ error: "PDF generation failed", details: err.message });
+    }
+  });
+
+  app.post("/api/generate-xml-a1", async (req, res) => {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Database not configured" });
+      const { xmlContent = "", ...formData } = req.body;
+      const bundle = await prisma.documentBundle.create({
+        data: {
+          formType: "PD_A1",
+          status: "GENERATED",
+          ico: formData.ico || "",
+          companyName: formData.obchodneMeno || "",
+          xmlContent,
+          metadata: req.body,
+        },
+      });
+      res.json({ success: true, id: bundle.id });
+    } catch (err: any) {
+      console.error("[DB] generate-xml-a1 failed:", err.message);
+      res.status(500).json({ error: "Failed to save bundle", details: err.message });
+    }
+  });
+
+  app.post("/api/generate-xml-uplatnitelna", async (req, res) => {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Database not configured" });
+      const { xmlContent = "", ...formData } = req.body;
+      const bundle = await prisma.documentBundle.create({
+        data: {
+          formType: "UPLATNITELNA_LEGISLATIVA",
+          status: "GENERATED",
+          ico: formData.ico || "",
+          companyName: formData.obchodneMeno || "",
+          xmlContent,
+          metadata: req.body,
+        },
+      });
+      res.json({ success: true, id: bundle.id });
+    } catch (err: any) {
+      console.error("[DB] generate-xml-uplatnitelna failed:", err.message);
+      res.status(500).json({ error: "Failed to save bundle", details: err.message });
+    }
+  });
+
+  app.get("/api/bundles", async (_req, res) => {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Database not configured" });
+      const bundles = await prisma.documentBundle.findMany({
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          createdAt: true,
+          formType: true,
+          status: true,
+          ico: true,
+          companyName: true,
+        },
+      });
+      res.json(bundles);
+    } catch (err: any) {
+      console.error("[DB] Failed to fetch bundles:", err.message);
+      res.status(500).json({ error: "Failed to fetch bundles", details: err.message });
+    }
+  });
+
+  app.get("/api/bundles/:id", async (req, res) => {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Database not configured" });
+      const bundle = await prisma.documentBundle.findUnique({
+        where: { id: req.params.id },
+      });
+      if (!bundle) return res.status(404).json({ error: "Bundle not found" });
+      res.json(bundle);
+    } catch (err: any) {
+      console.error("[DB] Failed to fetch bundle:", err.message);
+      res.status(500).json({ error: "Failed to fetch bundle", details: err.message });
     }
   });
 

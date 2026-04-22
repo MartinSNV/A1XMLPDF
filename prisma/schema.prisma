@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model DocumentBundle {
+  id          String       @id @default(cuid())
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  formType    FormType
+  status      BundleStatus @default(DRAFT)
+  ico         String
+  companyName String
+  xmlContent  String
+  pdfPath     String?
+  metadata    Json?
+}
+
+enum FormType {
+  PD_A1
+  UPLATNITELNA_LEGISLATIVA
+}
+
+enum BundleStatus {
+  DRAFT
+  GENERATED
+  SUBMITTED
+}

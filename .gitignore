@@ -24,3 +24,5 @@ Thumbs.db
 # Temp PDF files
 /tmp/*.pdf
 /tmp/*.json
+
+/generated/prisma

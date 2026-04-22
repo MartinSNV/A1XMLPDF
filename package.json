@@ -10,14 +10,19 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.7.0",
+    "@prisma/client": "^7.7.0",
+    "@types/pg": "^8.20.0",
+    "@vitejs/plugin-react": "^5.0.0",
     "axios": "^1.13.6",
     "express": "^5.2.1",
     "pdf-lib": "^1.17.1",
+    "pg": "^8.20.0",
+    "prisma": "^7.7.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tsx": "^4.21.0",
-    "vite": "^6.2.0",
-    "@vitejs/plugin-react": "^5.0.0"
+    "vite": "^6.2.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
