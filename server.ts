@@ -207,17 +207,6 @@ async function startServer() {
     try {
       const pdfBuffer = await generateFilledPdf(req.body);
 
-      prisma?.documentBundle.create({
-        data: {
-          formType: "PD_A1",
-          status: "GENERATED",
-          ico: req.body.ico || "",
-          companyName: req.body.obchodneMeno || "",
-          xmlContent: "",
-          metadata: req.body,
-        },
-      }).catch((err: any) => console.error("[DB] Failed to save bundle:", err.message));
-
       res.set({
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="ziadost-A1-SZCO.pdf"`,

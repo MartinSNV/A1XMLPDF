@@ -115,6 +115,11 @@ const App: React.FC = () => {
   const handleDownloadPdf = useCallback(async () => {
     setPdfLoading(true);
     setPdfError(null);
+    fetch('/api/generate-xml-a1', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...formData }),
+    }).catch(err => console.warn('[DB] Save failed:', err));
     try {
       const response = await fetch('/api/generate-pdf', {
         method: 'POST',
