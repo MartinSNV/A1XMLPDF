@@ -12,12 +12,42 @@ model DocumentBundle {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   formType    FormType
-  status      BundleStatus @default(DRAFT)
+  status      BundleStatus @default(NEW)
+
+  // Identifikácia žiadateľa
   ico         String
   companyName String
-  xmlContent  String
-  pdfPath     String?
-  metadata    Json?
+  applicantName String       // meno + priezvisko
+
+  // Dáta formulára (celý JSON stav formulára)
+  formData    Json
+
+  // Vygenerovaný XML (vypĺňa správca)
+  xmlContent  String?
+
+  // Poznámka správcu
+  adminNote   String?
+
+  // Prílohy
+  attachments Attachment[]
+}
+
+model Attachment {
+  id         String         @id @default(cuid())
+  createdAt  DateTime       @default(now())
+
+  // Prepojenie na žiadosť
+  bundleId   String
+  bundle     DocumentBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+
+  // Metadáta súboru
+  fileName   String         // pôvodný názov súboru
+  attachmentType String     // typ prílohy: "zivnostenskyList", "zmluva", "ine"
+  mimeType   String         // "application/pdf"
+  sizeBytes  Int
+
+  // Binárne dáta (PDF uložené priamo v DB)
+  data       Bytes
 }
 
 enum FormType {
@@ -26,7 +56,8 @@ enum FormType {
 }
 
 enum BundleStatus {
-  DRAFT
-  GENERATED
-  SUBMITTED
+  NEW          // práve podaná
+  REVIEWED     // správca skontroloval
+  SUBMITTED    // odoslané na SP
+  COMPLETED    // vybavené
 }
