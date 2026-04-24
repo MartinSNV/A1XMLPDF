@@ -25,7 +25,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install ALL Node dependencies (vite needed at runtime for tsx)
+# Install ALL Node dependencies
 COPY package*.json ./
 RUN npm install
 
@@ -33,13 +33,15 @@ RUN npm install
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
 COPY server.ts generatePdf.ts types.ts ./
-COPY fill_a1_pdf.py ./
+COPY fill_a1_pdf.py validate_xml.py ./
 COPY prisma ./prisma
+COPY schemas ./schemas
+
+# Generuj Prisma client
+RUN npx prisma generate
 
 EXPOSE 3000
 
 ENV NODE_ENV=production
-
-RUN npx prisma generate
 
 CMD ["npm", "run", "start"]
