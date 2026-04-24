@@ -9,6 +9,7 @@ import os from "os";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import { generateFilledPdf } from "./generatePdf.js";
+import { generateXmlFromBundle } from "./generateXmlBackend.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client.js";
@@ -325,19 +326,19 @@ async function startServer() {
       const bundle = await prisma.documentBundle.findUnique({ where: { id: req.params.id } });
       if (!bundle) return res.status(404).json({ error: "Žiadosť nenájdená" });
 
-      // Importuj XML generátor dynamicky (frontend utils)
-      // Keďže generátory sú na frontende, zavoláme validate_xml.py aby sme mali Python prístup
-      // Pre teraz vrátime formData ako základ pre manuálne generovanie
       const formData = bundle.formData as any;
+      const xml = generateXmlFromBundle(bundle.formType, formData);
 
       // Uloži xmlContent do DB
       await prisma.documentBundle.update({
         where: { id: req.params.id },
-        data: { xmlContent: JSON.stringify(formData) }, // placeholder - nahradíme neskôr skutočným generátorom
+        data: { xmlContent: xml },
       });
 
-      res.json({ success: true, xml: JSON.stringify(formData, null, 2) });
+      console.log(`[XML] Vygenerovaný XML pre bundle ${bundle.id} (${bundle.formType})`);
+      res.json({ success: true, xml });
     } catch (err: any) {
+      console.error("[XML] generate-xml failed:", err.message);
       res.status(500).json({ error: err.message });
     }
   });
