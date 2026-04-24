@@ -160,16 +160,6 @@ const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData }) => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    generateUplatnitelnaXml(formData);
-    fetch('/api/generate-xml-uplatnitelna', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...formData }),
-    }).catch(err => console.warn('[DB] Save failed:', err));
-  };
-
   const foreignCountries = COUNTRIES.filter(c => c !== 'Slovenská republika');
 
   return (
