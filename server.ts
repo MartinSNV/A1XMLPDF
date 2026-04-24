@@ -290,6 +290,95 @@ async function startServer() {
   });
 
   // Stiahnutie prílohy podľa ID
+  // ── Admin endpointy ──────────────────────────────────────────────────────
+
+  // Zmena stavu žiadosti
+  app.patch("/api/bundles/:id/status", async (req, res) => {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Database not configured" });
+      const { status } = req.body;
+      const valid = ['NEW', 'REVIEWED', 'SUBMITTED', 'COMPLETED'];
+      if (!valid.includes(status)) return res.status(400).json({ error: "Neplatný stav" });
+      await prisma.documentBundle.update({ where: { id: req.params.id }, data: { status } });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Uloženie admin poznámky
+  app.patch("/api/bundles/:id/note", async (req, res) => {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Database not configured" });
+      const { adminNote } = req.body;
+      await prisma.documentBundle.update({ where: { id: req.params.id }, data: { adminNote } });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Generovanie XML zo žiadosti v DB
+  app.post("/api/bundles/:id/generate-xml", async (req, res) => {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Database not configured" });
+      const bundle = await prisma.documentBundle.findUnique({ where: { id: req.params.id } });
+      if (!bundle) return res.status(404).json({ error: "Žiadosť nenájdená" });
+
+      // Importuj XML generátor dynamicky (frontend utils)
+      // Keďže generátory sú na frontende, zavoláme validate_xml.py aby sme mali Python prístup
+      // Pre teraz vrátime formData ako základ pre manuálne generovanie
+      const formData = bundle.formData as any;
+
+      // Uloži xmlContent do DB
+      await prisma.documentBundle.update({
+        where: { id: req.params.id },
+        data: { xmlContent: JSON.stringify(formData) }, // placeholder - nahradíme neskôr skutočným generátorom
+      });
+
+      res.json({ success: true, xml: JSON.stringify(formData, null, 2) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Stiahnutie ZIP balíka (XML + prílohy)
+  app.get("/api/bundles/:id/zip", async (req, res) => {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Database not configured" });
+      const bundle = await prisma.documentBundle.findUnique({
+        where: { id: req.params.id },
+        include: { attachments: true },
+      });
+      if (!bundle) return res.status(404).json({ error: "Žiadosť nenájdená" });
+
+      // Dynamický import archiver
+      const archiver = (await import("archiver")).default;
+      res.set({
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="ziadost-${bundle.ico}-${bundle.id.slice(0, 8)}.zip"`,
+      });
+
+      const archive = archiver("zip");
+      archive.pipe(res);
+
+      // Pridaj XML ak existuje
+      if (bundle.xmlContent) {
+        archive.append(bundle.xmlContent, { name: `ziadost-${bundle.ico}.xml` });
+      }
+
+      // Pridaj prílohy
+      for (const att of bundle.attachments) {
+        archive.append(Buffer.from(att.data), { name: att.fileName });
+      }
+
+      await archive.finalize();
+    } catch (err: any) {
+      console.error("[ZIP] Error:", err.message);
+      if (!res.headersSent) res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/attachments/:id", async (req, res) => {
     try {
       if (!prisma) return res.status(503).json({ error: "Database not configured" });
@@ -309,6 +398,8 @@ async function startServer() {
   // ── Static / Vite ────────────────────────────────────────────────────────
   if (process.env.NODE_ENV === "production") {
     app.use(express.static("dist"));
+    app.get("/admin", (_req, res) => res.sendFile("admin/index.html", { root: "dist" }));
+    app.get("/admin/*splat", (_req, res) => res.sendFile("admin/index.html", { root: "dist" }));
     app.get("/{*splat}", (_req, res) => {
       res.sendFile("index.html", { root: "dist" });
     });
