@@ -16,8 +16,6 @@ SZČO                          Správca (ty)
 4. Uloží sa do DB             8. Odošle na SP
 ```
 
-> Generovanie XML/PDF priamo pre klienta je **dočasná funkcia** určená len na testovanie — v produkcii sa nepoužije.
-
 ---
 
 ## Aktuálny stav ✅
@@ -30,12 +28,23 @@ SZČO                          Správca (ty)
 - [x] Deploy na Northflank cez Docker
 - [x] XSD validácia XML voči schémam slovensko.sk (v12.0)
 - [x] Endpoint POST /api/validate-xml
+- [x] PostgreSQL + Prisma ORM
+- [x] Dátový model: DocumentBundle + Attachment
+- [x] Upload príloh (PDF, max 10MB, s typmi)
+- [x] Tlačidlo "Podať žiadosť" → uloženie do DB s prílohami
+- [x] Potvrdenie po podaní + návrat na úvodnú obrazovku
+- [x] Admin rozhranie na /admin (HTTP Basic Auth)
+- [x] Zoznam žiadostí s filtrom podľa stavu a typu
+- [x] Detail žiadosti – zobrazenie vyplnených dát (JSON)
+- [x] Generovanie skutočného XML zo žiadosti v DB
+- [x] Stiahnutie ZIP balíka (XML + prílohy)
+- [x] Stiahnutie jednotlivých príloh
+- [x] Zmena stavu žiadosti (Nová → Skontrolovaná → Odoslaná → Vybavená)
+- [x] Poznámka správcu ku každej žiadosti
 
 ---
 
 ## Fáza 1 – Stabilizácia základu 🔧
-
-> Cieľ: Formuláre sú funkčné, validované a pripravené na napojenie na DB
 
 - [ ] Zobrazenie chýb XSD validácie priamo vo formulári (UI feedback)
 - [ ] Dokončenie PDF pre formulár Uplatniteľná legislatíva
@@ -43,48 +52,16 @@ SZČO                          Správca (ty)
 
 ---
 
-## Fáza 2 – Uloženie žiadosti do databázy 💾
+## Fáza 2 – Vylepšenia UX 🎨
 
-> Cieľ: SZČO podá žiadosť → uloží sa do DB aj s prílohami
-
-### 2a – Databáza
-- [ ] PostgreSQL + Prisma ORM (pridať do Docker/Northflank)
-- [ ] Dátový model:
-  - `Submission` – žiadosť (typ, dátumy, stav, JSON dát formulára)
-  - `Attachment` – príloha (názov, typ, binárne dáta alebo S3 URL)
-- [ ] Stavy žiadosti: `nová → skontrolovaná → odoslaná → vybavená`
-
-### 2b – Upload príloh
-- [ ] Definovať maticu: *typ žiadosti → povinné/voliteľné prílohy*
-- [ ] UI pre upload príloh (živnostenský list, zmluvy, iné)
-- [ ] Validácia formátu (PDF) a veľkosti
-- [ ] Uloženie príloh do DB alebo objektového úložiska
-
-### 2c – Podanie žiadosti
-- [ ] Tlačidlo "Podať žiadosť" namiesto "Stiahnuť XML"
-- [ ] Potvrdzovacie okno pred podaním
-- [ ] Potvrdenie pre SZČO po úspešnom podaní (stránka / email)
+- [ ] Potvrdzovacie okno pred podaním žiadosti
+- [ ] Zobrazenie detailu vyplnených dát v admin rozhraní (nie surový JSON)
+- [ ] Filtrovanie žiadostí podľa dátumu
+- [ ] Vyhľadávanie žiadostí podľa IČO / mena
 
 ---
 
-## Fáza 3 – Admin rozhranie 🛠️
-
-> Cieľ: Ty ako správca vidíš žiadosti a môžeš ich spracovať
-
-- [ ] Jednoduché admin rozhranie (samostatná URL, napr. `/admin`)
-- [ ] Základná ochrana adminu (HTTP Basic Auth alebo env token)
-- [ ] Zoznam žiadostí s filtrom podľa stavu a typu
-- [ ] Detail žiadosti – zobrazenie vyplnených dát
-- [ ] Generovanie XML zo žiadosti (zo dát v DB)
-- [ ] Stiahnutie ZIP balíka (XML + všetky prílohy)
-- [ ] Zmena stavu žiadosti (skontrolovaná / odoslaná / vybavená)
-- [ ] Poznámka správcu ku každej žiadosti
-
----
-
-## Fáza 4 – Notifikácie 📬
-
-> Cieľ: SZČO dostane potvrdenie, správca dostane upozornenie
+## Fáza 3 – Notifikácie 📬 *(voliteľná)*
 
 - [ ] Email SZČO: potvrdenie o prijatí žiadosti
 - [ ] Email správcu: notifikácia o novej žiadosti
@@ -93,9 +70,7 @@ SZČO                          Správca (ty)
 
 ---
 
-## Fáza 5 – Autentifikácia používateľov 🔐 *(voliteľná)*
-
-> Cieľ: SZČO sa prihlási a vidí históriu svojich žiadostí
+## Fáza 4 – Autentifikácia používateľov 🔐 *(voliteľná)*
 
 - [ ] Registrácia / prihlásenie (email + heslo)
 - [ ] Prepojenie žiadostí s účtom
@@ -104,9 +79,7 @@ SZČO                          Správca (ty)
 
 ---
 
-## Fáza 6 – Platobný systém 💳 *(voliteľná)*
-
-> Cieľ: Monetizácia aplikácie
+## Fáza 5 – Platobný systém 💳 *(voliteľná)*
 
 - [ ] Výber platobnej brány (Stripe alebo GP WebPay)
 - [ ] Cenový model: *per žiadosť* alebo *predplatné*
@@ -117,27 +90,21 @@ SZČO                          Správca (ty)
 
 ## Technologický stack
 
-| Vrstva | Súčasný stav | Plánované |
-|---|---|---|
-| Frontend | React + TypeScript + Tailwind | + upload príloh, admin UI |
-| Backend | Express.js | + Prisma, file handling |
-| PDF gen | Python + pypdf | zachovať |
-| XML validácia | Python + lxml + XSD | zachovať |
-| Databáza | — | PostgreSQL + Prisma ORM |
-| Úložisko príloh | — | DB blob alebo S3/R2 |
-| Email | — | Nodemailer / SendGrid |
-| Admin auth | — | HTTP Basic / env token |
-| Používateľský auth | — | JWT alebo session (neskôr) |
-| eID | — | login.gov.sk (neskôr) |
-| Platby | — | Stripe alebo GP WebPay (neskôr) |
-
----
-
-## Odporúčané poradie
-
-```
-Fáza 1 → Fáza 2 → Fáza 3 → Fáza 4 → Fáza 5 → Fáza 6
-```
+| Vrstva | Stav |
+|---|---|
+| Frontend | React + TypeScript + Tailwind ✅ |
+| Backend | Express.js + multer ✅ |
+| PDF gen | Python + pypdf ✅ |
+| XML gen | TypeScript (frontend + backend) ✅ |
+| XML validácia | Python + lxml + XSD ✅ |
+| Databáza | PostgreSQL + Prisma ORM ✅ |
+| Prílohy | Uložené ako Bytes v DB ✅ |
+| Admin | /admin + HTTP Basic Auth ✅ |
+| ZIP export | archiver ✅ |
+| Email | Nodemailer / SendGrid ⬜ |
+| Používateľský auth | JWT alebo session ⬜ |
+| eID | login.gov.sk ⬜ |
+| Platby | Stripe alebo GP WebPay ⬜ |
 
 ---
 
