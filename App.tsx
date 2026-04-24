@@ -11,6 +11,7 @@ import { BRANCH_OFFICE_BY_PSC } from './psc_mapping';
 import { generateA1Xml, parseBirthDateFromRc } from './utils';
 import { useRpo } from './hooks/useRpo';
 import UplatnitelnaForm, { initialUplatnitelnaData } from './UplatnitelnaForm';
+import AttachmentUpload, { type AttachmentFile } from './components/AttachmentUpload';
 
 const emptyAddress: Address = { ulica: '', supisneCislo: '', orientacneCislo: '', obec: '', psc: '', stat: 'Slovenská republika' };
 const emptyMiesto = (): MiestoVyslania => ({ obchodneMeno: '', ico: '', adresa: { ...emptyAddress, stat: '' } });
@@ -62,6 +63,10 @@ const App: React.FC = () => {
   const [uplatnitelnaData, setUplatnitelnaData] = useState<UplatnitelnaFormDataState>(initialUplatnitelnaData());
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const { loading: rpoLoading, error: rpoError, success: icoFetchSuccess } = useRpo(formData.ico, setFormData);
 
   const dateError = React.useMemo(() => {
@@ -111,6 +116,32 @@ const App: React.FC = () => {
       return newState;
     });
   }, []);
+
+  const handleSubmit = useCallback(async () => {
+    setSubmitLoading(true);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    try {
+      const fd = new FormData();
+      fd.append('formType', 'PD_A1');
+      fd.append('formData', JSON.stringify(formData));
+      fd.append('attachmentMeta', JSON.stringify(attachments.map(a => ({ attachmentType: a.attachmentType }))));
+      attachments.forEach(a => fd.append('attachments', a.file));
+
+      const res = await fetch('/api/submit', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Chyba pri odosielaní');
+      }
+      const data = await res.json();
+      setSubmitSuccess(`Žiadosť bola úspešne podaná (ID: ${data.id}). Budeme vás kontaktovať.`);
+      setAttachments([]);
+    } catch (err: any) {
+      setSubmitError(err.message || 'Chyba pri odosielaní žiadosti');
+    } finally {
+      setSubmitLoading(false);
+    }
+  }, [formData, attachments]);
 
   const handleDownloadPdf = useCallback(async () => {
     setPdfLoading(true);
@@ -561,6 +592,13 @@ const App: React.FC = () => {
             <InputField label="Doplňujúce informácie" id="poznamka" name="poznamka" type="textarea" value={formData.poznamka} onChange={handleChange} gridSpan="md:col-span-2" />
           </FormSection>
 
+          {/* ── Prílohy ── */}
+          <AttachmentUpload
+            attachments={attachments}
+            setAttachments={setAttachments}
+            formType="PD_A1"
+          />
+
           {/* ── Tlačidlá ── */}
           <div className="mt-12 flex flex-col items-center justify-center pb-12 gap-4">
             {dateError && (
@@ -571,16 +609,49 @@ const App: React.FC = () => {
                 {dateError}
               </p>
             )}
-            <div className="flex flex-col sm:flex-row gap-4 items-center">
-              <button type="submit" disabled={!!dateError}
-                className={`font-bold py-4 px-12 rounded-2xl shadow-xl transition-all ${dateError ? 'bg-gray-400 cursor-not-allowed opacity-50' : 'bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 active:scale-95'}`}>
-                Generovať a stiahnuť XML
-              </button>
-              <button type="button" disabled={!!dateError || pdfLoading} onClick={handleDownloadPdf}
-                className={`flex items-center gap-2 font-bold py-4 px-10 rounded-2xl shadow-xl transition-all ${dateError || pdfLoading ? 'bg-gray-400 cursor-not-allowed opacity-50 text-white' : 'bg-red-600 hover:bg-red-700 text-white hover:scale-105 active:scale-95'}`}>
-                {pdfLoading ? (<><SpinnerIcon />Generujem PDF...</>) : (<><PdfIcon />Stiahnuť PDF žiadosť</>)}
-              </button>
-            </div>
+
+            {/* Hlavné tlačidlo — Podať žiadosť */}
+            {submitSuccess ? (
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-semibold text-lg">
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  {submitSuccess}
+                </div>
+                <button type="button" onClick={() => { setSubmitSuccess(null); }}
+                  className="text-sm text-blue-600 dark:text-blue-400 underline">
+                  Podať ďalšiu žiadosť
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row gap-4 items-center">
+                <button
+                  type="button"
+                  disabled={!!dateError || submitLoading}
+                  onClick={handleSubmit}
+                  className={`flex items-center gap-2 font-bold py-4 px-12 rounded-2xl shadow-xl transition-all ${dateError || submitLoading ? 'bg-gray-400 cursor-not-allowed opacity-50 text-white' : 'bg-green-600 hover:bg-green-700 text-white hover:scale-105 active:scale-95'}`}>
+                  {submitLoading ? (
+                    <><SpinnerIcon />Odosielam...</>
+                  ) : (
+                    <>
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                      Podať žiadosť
+                    </>
+                  )}
+                </button>
+                <button type="button" disabled={!!dateError || pdfLoading} onClick={handleDownloadPdf}
+                  className={`flex items-center gap-2 font-bold py-4 px-10 rounded-2xl shadow-xl transition-all ${dateError || pdfLoading ? 'bg-gray-400 cursor-not-allowed opacity-50 text-white' : 'bg-red-600 hover:bg-red-700 text-white hover:scale-105 active:scale-95'}`}>
+                  {pdfLoading ? (<><SpinnerIcon />Generujem PDF...</>) : (<><PdfIcon />Stiahnuť PDF žiadosť</>)}
+                </button>
+              </div>
+            )}
+
+            {submitError && (
+              <p className="text-red-600 dark:text-red-400 text-sm font-medium">{submitError}</p>
+            )}
             {pdfError && (
               <p className="text-red-600 dark:text-red-400 text-sm font-medium flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">

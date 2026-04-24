@@ -7,6 +7,7 @@ import CheckboxField from './components/CheckboxField';
 import AddressFields from './components/AddressFields';
 import { COUNTRIES, BRANCH_OFFICES, NACE_CATEGORIES, TITLES_BEFORE, TITLES_AFTER } from './constants';
 import { generateUplatnitelnaXml } from './utilsUplatnitelna';
+import AttachmentUpload, { type AttachmentFile } from './components/AttachmentUpload';
 
 const emptyAddress: Address = { ulica: '', supisneCislo: '', orientacneCislo: '', obec: '', psc: '', stat: 'Slovenská republika' };
 const emptyMiestoVykonu = (): MiestoVykonuCinnosti => ({ description: '', adresa: { ...emptyAddress, stat: '' } });
@@ -67,6 +68,38 @@ interface Props {
 }
 
 const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData }) => {
+  const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitLoading(true);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    try {
+      const fd = new FormData();
+      fd.append('formType', 'UPLATNITELNA_LEGISLATIVA');
+      fd.append('formData', JSON.stringify(formData));
+      fd.append('attachmentMeta', JSON.stringify(attachments.map(a => ({ attachmentType: a.attachmentType }))));
+      attachments.forEach(a => fd.append('attachments', a.file));
+
+      const res = await fetch('/api/submit', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Chyba pri odosielaní');
+      }
+      const data = await res.json();
+      setSubmitSuccess(`Žiadosť bola úspešne podaná (ID: ${data.id}). Budeme vás kontaktovať.`);
+      setAttachments([]);
+    } catch (err: any) {
+      setSubmitError(err.message || 'Chyba pri odosielaní žiadosti');
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const target = e.target as HTMLInputElement;
     const { name, value, type } = target;
@@ -481,15 +514,54 @@ const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData }) => {
           value={formData.doplnujuceInfo} onChange={handleChange} gridSpan="md:col-span-2" />
       </FormSection>
 
+      {/* ── Prílohy ── */}
+      <AttachmentUpload
+        attachments={attachments}
+        setAttachments={setAttachments}
+        formType="UPLATNITELNA_LEGISLATIVA"
+      />
+
       {/* ── Tlačidlo ── */}
       <div className="mt-12 flex flex-col items-center justify-center pb-12 gap-4">
-        <button type="submit"
-          className="bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-12 rounded-2xl shadow-xl transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          Generovať a stiahnuť XML
-        </button>
+        {submitSuccess ? (
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-semibold text-lg">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+              {submitSuccess}
+            </div>
+            <button type="button" onClick={() => setSubmitSuccess(null)}
+              className="text-sm text-blue-600 dark:text-blue-400 underline">
+              Podať ďalšiu žiadosť
+            </button>
+          </div>
+        ) : (
+          <button
+            type="submit"
+            disabled={submitLoading}
+            className={`flex items-center gap-2 font-bold py-4 px-12 rounded-2xl shadow-xl transition-all ${submitLoading ? 'bg-gray-400 cursor-not-allowed opacity-50 text-white' : 'bg-green-600 hover:bg-green-700 text-white hover:scale-105 active:scale-95'}`}>
+            {submitLoading ? (
+              <>
+                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                Odosielam...
+              </>
+            ) : (
+              <>
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+                Podať žiadosť
+              </>
+            )}
+          </button>
+        )}
+        {submitError && (
+          <p className="text-red-600 dark:text-red-400 text-sm font-medium">{submitError}</p>
+        )}
       </div>
     </form>
   );
