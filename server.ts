@@ -385,12 +385,16 @@ async function startServer() {
       if (!prisma) return res.status(503).json({ error: "Database not configured" });
       const att = await prisma.attachment.findUnique({ where: { id: req.params.id } });
       if (!att) return res.status(404).json({ error: "Príloha nenájdená" });
+
+      const buffer = Buffer.isBuffer(att.data) ? att.data : Buffer.from(att.data);
+      const encodedName = encodeURIComponent(att.fileName);
+
       res.set({
-        "Content-Type": att.mimeType,
-        "Content-Disposition": `attachment; filename="${att.fileName}"`,
-        "Content-Length": att.sizeBytes,
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${encodedName}"; filename*=UTF-8''${encodedName}`,
+        "Content-Length": buffer.length,
       });
-      res.send(att.data);
+      res.end(buffer);
     } catch (err: any) {
       res.status(500).json({ error: "Chyba pri sťahovaní prílohy", details: err.message });
     }
