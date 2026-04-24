@@ -45,7 +45,7 @@ async function validateXml(xmlString: string, typ: "vyslanie" | "uplatnitelna"):
   }
 }
 
-// Retry with exponential backoff — handles 429 rate limit from api.statistics.sk
+// ── Retry with exponential backoff — handles 429 rate limit from api.statistics.sk ──
 async function fetchWithRetry(
   url: string,
   maxRetries = 4,
@@ -85,44 +85,6 @@ async function startServer() {
 
   app.use(express.json({ limit: "10mb" }));
 
-  // ── Helper: fetch with optional Browserless proxy ────────────────────────
-  const fetchData = async (url: string, browserlessToken?: string) => {
-    if (browserlessToken && browserlessToken.trim().length > 0) {
-      console.log(`[Server] Attempting Browserless proxy for: ${url}`);
-      try {
-        const browserlessUrl = `https://chrome.browserless.io/content?token=${browserlessToken}`;
-        const response = await axios.post(browserlessUrl, {
-          url,
-          waitFor: "networkidle0",
-          setJavaScriptEnabled: true,
-        }, {
-          headers: { "Content-Type": "application/json" },
-          timeout: 40000,
-        });
-        if (response.data) {
-          const content = response.data;
-          const jsonMatch = content.match(/\{[\s\S]*\}/);
-          const jsonStr = jsonMatch ? jsonMatch[0] : content;
-          try {
-            return JSON.parse(jsonStr);
-          } catch {
-            const bodyMatch = content.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-            const bodyText = bodyMatch
-              ? bodyMatch[1].replace(/<[^>]*>/g, "").trim()
-              : content.replace(/<[^>]*>/g, "").trim();
-            return JSON.parse(bodyText);
-          }
-        }
-        throw new Error("No content returned from Browserless");
-      } catch (error: any) {
-        console.error(`[Server] Browserless failed: ${error.message}`);
-        // fallthrough to direct request with retry
-      }
-    }
-    // Direct request with retry logic (handles 429)
-    return fetchWithRetry(url);
-  };
-
   // ── API routes ───────────────────────────────────────────────────────────
 
   app.get("/api/rpo/entity", async (req, res) => {
@@ -132,7 +94,7 @@ async function startServer() {
 
       const searchUrl = `https://api.statistics.sk/rpo/v1/search?identifier=${ico}`;
       console.log(`[Server] RPO Combined: Searching for ICO ${ico}`);
-      const searchData = await fetchData(searchUrl, process.env.BROWSERLESS_API_KEY);
+      const searchData = await fetchWithRetry(searchUrl);
 
       if (!searchData.results?.length)
         return res.status(404).json({ error: "Organization not found" });
@@ -143,7 +105,7 @@ async function startServer() {
 
       const detailUrl = `https://api.statistics.sk/rpo/v1/entity/${entityId}?showHistoricalData=true&showOrganizationUnits=true`;
       console.log(`[Server] RPO Combined: Fetching detail for ID ${entityId}`);
-      const detailData = await fetchData(detailUrl, process.env.BROWSERLESS_API_KEY);
+      const detailData = await fetchWithRetry(detailUrl);
       res.json(detailData);
     } catch (error: any) {
       const status = error.response?.status;
@@ -162,9 +124,8 @@ async function startServer() {
     try {
       const { identifier } = req.query;
       if (!identifier) return res.status(400).json({ error: "Missing identifier" });
-      const data = await fetchData(
-        `https://api.statistics.sk/rpo/v1/search?identifier=${identifier}`,
-        process.env.BROWSERLESS_API_KEY
+      const data = await fetchWithRetry(
+        `https://api.statistics.sk/rpo/v1/search?identifier=${identifier}`
       );
       res.json(data);
     } catch (error: any) {
@@ -179,9 +140,8 @@ async function startServer() {
     try {
       const { id } = req.params;
       if (!id) return res.status(400).json({ error: "Missing ID" });
-      const data = await fetchData(
-        `https://api.statistics.sk/rpo/v1/entity/${id}?showHistoricalData=true&showOrganizationUnits=true`,
-        process.env.BROWSERLESS_API_KEY
+      const data = await fetchWithRetry(
+        `https://api.statistics.sk/rpo/v1/entity/${id}?showHistoricalData=true&showOrganizationUnits=true`
       );
       res.json(data);
     } catch (error: any) {
@@ -206,7 +166,6 @@ async function startServer() {
   app.post("/api/generate-pdf", async (req, res) => {
     try {
       const pdfBuffer = await generateFilledPdf(req.body);
-
       res.set({
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="ziadost-A1-SZCO.pdf"`,
@@ -311,7 +270,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
