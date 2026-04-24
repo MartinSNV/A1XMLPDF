@@ -30,8 +30,6 @@ const upload = multer({
   },
 });
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 // ── XML Validácia cez validate_xml.py ────────────────────────────────────────
 async function validateXml(xmlString: string, typ: "vyslanie" | "uplatnitelna"): Promise<{ valid: boolean; errors: string[] }> {
   const tmpXml = path.join(os.tmpdir(), `validate-${Date.now()}.xml`);
