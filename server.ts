@@ -6,6 +6,7 @@ import { writeFile, unlink } from "fs/promises";
 import path from "path";
 import os from "os";
 import { fileURLToPath } from "url";
+import multer from "multer";
 import { generateFilledPdf } from "./generatePdf.js";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -16,6 +17,18 @@ const prisma: PrismaClient | null = process.env.DATABASE_URL
   ? new PrismaClient({ adapter: new PrismaPg(new Pool({ connectionString: process.env.DATABASE_URL })) })
   : null;
 if (!prisma) console.warn("[DB] DATABASE_URL not set – running without database");
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Multer — súbory len v pamäti (ukladáme do DB)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // max 10MB na súbor
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === "application/pdf") cb(null, true);
+    else cb(new Error("Povolené sú len PDF súbory"));
+  },
+});
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -163,6 +176,63 @@ async function startServer() {
     }
   });
 
+  // ── POST /api/submit — podanie žiadosti s prílohami ─────────────────────
+  app.post("/api/submit", upload.array("attachments", 20), async (req, res) => {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Databáza nie je nakonfigurovaná" });
+
+      // formData príde ako JSON string v poli "formData"
+      let formData: any;
+      try {
+        formData = JSON.parse(req.body.formData);
+      } catch {
+        return res.status(400).json({ error: "Neplatný formát formData" });
+      }
+
+      const formType = req.body.formType as string;
+      if (!["PD_A1", "UPLATNITELNA_LEGISLATIVA"].includes(formType)) {
+        return res.status(400).json({ error: "Neplatný typ formulára" });
+      }
+
+      const files = (req.files as Express.Multer.File[]) || [];
+
+      // Parsuj metadata príloh (názov typu pre každý súbor)
+      let attachmentMeta: { attachmentType: string }[] = [];
+      try {
+        attachmentMeta = JSON.parse(req.body.attachmentMeta || "[]");
+      } catch {
+        attachmentMeta = files.map(() => ({ attachmentType: "ine" }));
+      }
+
+      const bundle = await prisma.documentBundle.create({
+        data: {
+          formType: formType as any,
+          status: "NEW",
+          ico: formData.ico || "",
+          companyName: formData.obchodneMeno || "",
+          applicantName: `${formData.meno || ""} ${formData.priezvisko || ""}`.trim(),
+          formData: formData,
+          attachments: {
+            create: files.map((file, i) => ({
+              fileName: file.originalname,
+              attachmentType: attachmentMeta[i]?.attachmentType || "ine",
+              mimeType: file.mimetype,
+              sizeBytes: file.size,
+              data: file.buffer,
+            })),
+          },
+        },
+        include: { attachments: { select: { id: true, fileName: true, attachmentType: true, sizeBytes: true } } },
+      });
+
+      console.log(`[DB] Žiadosť uložená: ${bundle.id} (${formType}, ${files.length} príloh)`);
+      res.json({ success: true, id: bundle.id, attachments: bundle.attachments });
+    } catch (err: any) {
+      console.error("[DB] submit failed:", err.message);
+      res.status(500).json({ error: "Chyba pri ukladaní žiadosti", details: err.message });
+    }
+  });
+
   app.post("/api/generate-pdf", async (req, res) => {
     try {
       const pdfBuffer = await generateFilledPdf(req.body);
@@ -178,48 +248,6 @@ async function startServer() {
     }
   });
 
-  app.post("/api/generate-xml-a1", async (req, res) => {
-    try {
-      if (!prisma) return res.status(503).json({ error: "Database not configured" });
-      const { xmlContent = "", ...formData } = req.body;
-      const bundle = await prisma.documentBundle.create({
-        data: {
-          formType: "PD_A1",
-          status: "GENERATED",
-          ico: formData.ico || "",
-          companyName: formData.obchodneMeno || "",
-          xmlContent,
-          metadata: req.body,
-        },
-      });
-      res.json({ success: true, id: bundle.id });
-    } catch (err: any) {
-      console.error("[DB] generate-xml-a1 failed:", err.message);
-      res.status(500).json({ error: "Failed to save bundle", details: err.message });
-    }
-  });
-
-  app.post("/api/generate-xml-uplatnitelna", async (req, res) => {
-    try {
-      if (!prisma) return res.status(503).json({ error: "Database not configured" });
-      const { xmlContent = "", ...formData } = req.body;
-      const bundle = await prisma.documentBundle.create({
-        data: {
-          formType: "UPLATNITELNA_LEGISLATIVA",
-          status: "GENERATED",
-          ico: formData.ico || "",
-          companyName: formData.obchodneMeno || "",
-          xmlContent,
-          metadata: req.body,
-        },
-      });
-      res.json({ success: true, id: bundle.id });
-    } catch (err: any) {
-      console.error("[DB] generate-xml-uplatnitelna failed:", err.message);
-      res.status(500).json({ error: "Failed to save bundle", details: err.message });
-    }
-  });
-
   app.get("/api/bundles", async (_req, res) => {
     try {
       if (!prisma) return res.status(503).json({ error: "Database not configured" });
@@ -232,6 +260,8 @@ async function startServer() {
           status: true,
           ico: true,
           companyName: true,
+          applicantName: true,
+          _count: { select: { attachments: true } },
         },
       });
       res.json(bundles);
@@ -246,12 +276,34 @@ async function startServer() {
       if (!prisma) return res.status(503).json({ error: "Database not configured" });
       const bundle = await prisma.documentBundle.findUnique({
         where: { id: req.params.id },
+        include: {
+          attachments: {
+            select: { id: true, fileName: true, attachmentType: true, mimeType: true, sizeBytes: true, createdAt: true },
+          },
+        },
       });
       if (!bundle) return res.status(404).json({ error: "Bundle not found" });
       res.json(bundle);
     } catch (err: any) {
       console.error("[DB] Failed to fetch bundle:", err.message);
       res.status(500).json({ error: "Failed to fetch bundle", details: err.message });
+    }
+  });
+
+  // Stiahnutie prílohy podľa ID
+  app.get("/api/attachments/:id", async (req, res) => {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Database not configured" });
+      const att = await prisma.attachment.findUnique({ where: { id: req.params.id } });
+      if (!att) return res.status(404).json({ error: "Príloha nenájdená" });
+      res.set({
+        "Content-Type": att.mimeType,
+        "Content-Disposition": `attachment; filename="${att.fileName}"`,
+        "Content-Length": att.sizeBytes,
+      });
+      res.send(att.data);
+    } catch (err: any) {
+      res.status(500).json({ error: "Chyba pri sťahovaní prílohy", details: err.message });
     }
   });
 
