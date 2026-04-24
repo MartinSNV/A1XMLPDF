@@ -406,9 +406,25 @@ async function startServer() {
   } else {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: "custom",
     });
     app.use(vite.middlewares);
+
+    // Admin stránka v dev móde
+    app.get("/admin", async (_req, res) => {
+      const { readFile } = await import("fs/promises");
+      let html = await readFile(path.join(__dirname, "admin/index.html"), "utf-8");
+      html = await vite.transformIndexHtml("/admin/index.html", html);
+      res.status(200).set({ "Content-Type": "text/html" }).end(html);
+    });
+
+    // Hlavná SPA
+    app.get("/{*splat}", async (req, res) => {
+      const { readFile } = await import("fs/promises");
+      let html = await readFile(path.join(__dirname, "index.html"), "utf-8");
+      html = await vite.transformIndexHtml(req.originalUrl, html);
+      res.status(200).set({ "Content-Type": "text/html" }).end(html);
+    });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
