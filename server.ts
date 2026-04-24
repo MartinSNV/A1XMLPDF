@@ -98,6 +98,30 @@ async function startServer() {
 
   app.use(express.json({ limit: "10mb" }));
 
+  // ── Admin Basic Auth ─────────────────────────────────────────────────────
+  const ADMIN_USER = process.env.ADMIN_USER || "admin";
+  const ADMIN_PASS = process.env.ADMIN_PASS || "";
+
+  const basicAuth = (req: any, res: any, next: any) => {
+    if (!ADMIN_PASS) return next(); // ak nie je nastavené heslo, pustí ďalej (dev)
+    const auth = req.headers.authorization;
+    if (!auth || !auth.startsWith("Basic ")) {
+      res.set("WWW-Authenticate", 'Basic realm="Admin"');
+      return res.status(401).send("Vyžaduje sa prihlásenie");
+    }
+    const [user, pass] = Buffer.from(auth.slice(6), "base64").toString().split(":");
+    if (user !== ADMIN_USER || pass !== ADMIN_PASS) {
+      res.set("WWW-Authenticate", 'Basic realm="Admin"');
+      return res.status(401).send("Nesprávne meno alebo heslo");
+    }
+    next();
+  };
+
+  // Chráni admin stránku aj všetky /api/bundles endpointy
+  app.use("/admin", basicAuth);
+  app.use("/api/bundles", basicAuth);
+  app.use("/api/attachments", basicAuth);
+
   // ── API routes ───────────────────────────────────────────────────────────
 
   app.get("/api/rpo/entity", async (req, res) => {
