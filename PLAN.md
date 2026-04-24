@@ -27,84 +27,93 @@ SZČO                          Správca (ty)
 - [x] Generovanie PDF cez Python/pypdf backend
 - [x] Deploy na Northflank cez Docker
 - [x] XSD validácia XML voči schémam slovensko.sk (v12.0)
-- [x] Endpoint POST /api/validate-xml
-- [x] PostgreSQL + Prisma ORM
-- [x] Dátový model: DocumentBundle + Attachment
+- [x] PostgreSQL + Prisma ORM + Attachment model
 - [x] Upload príloh (PDF, max 10MB, s typmi)
 - [x] Tlačidlo "Podať žiadosť" → uloženie do DB s prílohami
 - [x] Potvrdenie po podaní + návrat na úvodnú obrazovku
 - [x] Admin rozhranie na /admin (HTTP Basic Auth)
 - [x] Zoznam žiadostí s filtrom podľa stavu a typu
-- [x] Detail žiadosti – zobrazenie vyplnených dát (JSON)
 - [x] Generovanie skutočného XML zo žiadosti v DB
 - [x] Stiahnutie ZIP balíka (XML + prílohy)
 - [x] Stiahnutie jednotlivých príloh
-- [x] Zmena stavu žiadosti (Nová → Skontrolovaná → Odoslaná → Vybavená)
+- [x] Zmena stavu žiadosti
 - [x] Poznámka správcu ku každej žiadosti
 
 ---
 
-## Fáza 1 – Stabilizácia základu 🔧
+## Blok A – Nasadenie a testovanie v produkcii 🚀
 
-- [ ] Zobrazenie chýb XSD validácie priamo vo formulári (UI feedback)
-- [ ] Dokončenie PDF pre formulár Uplatniteľná legislatíva
-- [ ] Testovanie na reálnych podaniach (overenie akceptácie SP)
+> Cieľ: Aplikácia beží na Northflank s reálnou DB
 
----
-
-## Fáza 2 – Vylepšenia UX 🎨
-
-- [ ] Potvrdzovacie okno pred podaním žiadosti
-- [ ] Zobrazenie detailu vyplnených dát v admin rozhraní (nie surový JSON)
-- [ ] Filtrovanie žiadostí podľa dátumu
-- [ ] Vyhľadávanie žiadostí podľa IČO / mena
+- [ ] A1 – Trigger nový deploy na Northflank po posledných zmenách
+- [ ] A2 – Overiť že DATABASE_URL, ADMIN_USER, ADMIN_PASS sú nastavené
+- [ ] A3 – Otestovať podanie žiadosti v produkcii
+- [ ] A4 – Otestovať admin rozhranie v produkcii (ZIP, XML, prílohy)
+- [ ] A5 – Skontrolovať logy ak niečo nefunguje
 
 ---
 
-## Fáza 3 – Notifikácie 📬 *(voliteľná)*
+## Blok B – Stabilizácia formulárov 🔧
 
-- [ ] Email SZČO: potvrdenie o prijatí žiadosti
-- [ ] Email správcu: notifikácia o novej žiadosti
-- [ ] Email SZČO: informácia o stave (odoslaná / vybavená)
-- [ ] Nodemailer alebo SendGrid
+> Cieľ: Formuláre sú spoľahlivé a dávajú feedback
 
----
-
-## Fáza 4 – Autentifikácia používateľov 🔐 *(voliteľná)*
-
-- [ ] Registrácia / prihlásenie (email + heslo)
-- [ ] Prepojenie žiadostí s účtom
-- [ ] Dashboard SZČO – história podaní a ich stav
-- [ ] Prípadne: prihlásenie cez eID / login.gov.sk
+- [ ] B1 – Zobraziť chyby XSD validácie priamo vo formulári po kliknutí "Podať žiadosť"
+- [ ] B2 – Potvrdzovacie okno pred podaním ("Naozaj chcete podať žiadosť?")
+- [ ] B3 – Dokončenie PDF pre formulár Uplatniteľná legislatíva
+- [ ] B4 – Testovanie na reálnych podaniach (overenie akceptácie SP)
 
 ---
 
-## Fáza 5 – Platobný systém 💳 *(voliteľná)*
+## Blok C – Vylepšenie admin rozhrania 🛠️
 
-- [ ] Výber platobnej brány (Stripe alebo GP WebPay)
-- [ ] Cenový model: *per žiadosť* alebo *predplatné*
-- [ ] Platba pred podaním žiadosti
-- [ ] Automatická faktúrácia
+> Cieľ: Admin rozhranie je prehľadné a použiteľné
+
+- [ ] C1 – Detail žiadosti: čitateľný prehľad dát (nie surový JSON)
+- [ ] C2 – Filtrovanie podľa dátumu (od/do)
+- [ ] C3 – Vyhľadávanie podľa IČO alebo mena
+- [ ] C4 – Počet nových žiadostí v hlavičke (badge)
+- [ ] C5 – Možnosť zmazať žiadosť (s potvrdením)
 
 ---
 
-## Technologický stack
+## Blok D – Notifikácie emailom 📬 *(voliteľný)*
 
-| Vrstva | Stav |
-|---|---|
-| Frontend | React + TypeScript + Tailwind ✅ |
-| Backend | Express.js + multer ✅ |
-| PDF gen | Python + pypdf ✅ |
-| XML gen | TypeScript (frontend + backend) ✅ |
-| XML validácia | Python + lxml + XSD ✅ |
-| Databáza | PostgreSQL + Prisma ORM ✅ |
-| Prílohy | Uložené ako Bytes v DB ✅ |
-| Admin | /admin + HTTP Basic Auth ✅ |
-| ZIP export | archiver ✅ |
-| Email | Nodemailer / SendGrid ⬜ |
-| Používateľský auth | JWT alebo session ⬜ |
-| eID | login.gov.sk ⬜ |
-| Platby | Stripe alebo GP WebPay ⬜ |
+> Cieľ: Automatické emaily pri podaní a zmene stavu
+
+- [ ] D1 – Nastaviť Nodemailer + SMTP (Gmail alebo SendGrid)
+- [ ] D2 – Email SZČO: potvrdenie o prijatí žiadosti (s ID)
+- [ ] D3 – Email správcu: notifikácia o novej žiadosti
+- [ ] D4 – Email SZČO: informácia keď je žiadosť odoslaná / vybavená
+
+---
+
+## Blok E – Autentifikácia SZČO 🔐 *(voliteľný)*
+
+> Cieľ: SZČO sa prihlási a vidí históriu svojich žiadostí
+
+- [ ] E1 – Registrácia / prihlásenie (email + heslo)
+- [ ] E2 – Prepojenie žiadostí s účtom SZČO
+- [ ] E3 – Dashboard SZČO – história podaní a ich stav
+- [ ] E4 – Prípadne: prihlásenie cez eID / login.gov.sk
+
+---
+
+## Blok F – Platobný systém 💳 *(voliteľný)*
+
+> Cieľ: Monetizácia aplikácie
+
+- [ ] F1 – Výber platobnej brány (Stripe alebo GP WebPay)
+- [ ] F2 – Cenový model: *per žiadosť* alebo *predplatné*
+- [ ] F3 – Platba pred podaním žiadosti
+- [ ] F4 – Automatická faktúrácia
+
+---
+
+## Odporúčané poradie
+
+```
+Blok A → Blok B → Blok C → Blok D → Blok E → Blok F
+```
 
 ---
 
