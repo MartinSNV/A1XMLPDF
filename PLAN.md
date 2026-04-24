@@ -1,6 +1,22 @@
 # Plán vývoja – A1 XMLPDF
 
-> Aplikácia pre SZČO na generovanie, podpisovanie a odosielanie žiadostí na Sociálnu poisťovňu.
+> Aplikácia pre SZČO na podanie žiadostí na Sociálnu poisťovňu.
+> SZČO vyplní formulár a priloží prílohy. Správca následne vygeneruje XML a odošle podanie na SP.
+
+---
+
+## Skutočný flow aplikácie
+
+```
+SZČO                          Správca (ty)
+────────────────────          ─────────────────────────
+1. Vyplní formulár            5. Vidí zoznam žiadostí
+2. Priloží prílohy            6. Vygeneruje XML
+3. Podá žiadosť               7. Stiahne ZIP (XML + prílohy)
+4. Uloží sa do DB             8. Odošle na SP
+```
+
+> Generovanie XML/PDF priamo pre klienta je **dočasná funkcia** určená len na testovanie — v produkcii sa nepoužije.
 
 ---
 
@@ -12,153 +28,117 @@
 - [x] Výber formulára po načítaní IČO
 - [x] Generovanie PDF cez Python/pypdf backend
 - [x] Deploy na Northflank cez Docker
+- [x] XSD validácia XML voči schémam slovensko.sk (v12.0)
+- [x] Endpoint POST /api/validate-xml
 
 ---
 
-## Fáza 1 – Dokončenie základu 🔧
+## Fáza 1 – Stabilizácia základu 🔧
 
-> Cieľ: Stabilná a validovaná generácia XML/PDF
+> Cieľ: Formuláre sú funkčné, validované a pripravené na napojenie na DB
 
-### Úlohy
-- [ ] Validácia vstupov voči XSD schémam pred generovaním
-- [ ] Unit testy XML výstupu (porovnanie s referenčnými súbormi)
-- [ ] Zobrazenie chýb validácie priamo vo formulári
+- [ ] Zobrazenie chýb XSD validácie priamo vo formulári (UI feedback)
 - [ ] Dokončenie PDF pre formulár Uplatniteľná legislatíva
 - [ ] Testovanie na reálnych podaniach (overenie akceptácie SP)
 
 ---
 
-## Fáza 2 – Prílohy a správa dokumentov 📎
+## Fáza 2 – Uloženie žiadosti do databázy 💾
 
-> Cieľ: Systém príloh podľa typu žiadosti + uloženie celého podacieho balíka
+> Cieľ: SZČO podá žiadosť → uloží sa do DB aj s prílohami
 
-### 2a – Prílohy
+### 2a – Databáza
+- [ ] PostgreSQL + Prisma ORM (pridať do Docker/Northflank)
+- [ ] Dátový model:
+  - `Submission` – žiadosť (typ, dátumy, stav, JSON dát formulára)
+  - `Attachment` – príloha (názov, typ, binárne dáta alebo S3 URL)
+- [ ] Stavy žiadosti: `nová → skontrolovaná → odoslaná → vybavená`
+
+### 2b – Upload príloh
 - [ ] Definovať maticu: *typ žiadosti → povinné/voliteľné prílohy*
-- [ ] Upload príloh používateľom (živnostenský list, zmluvy, iné)
-- [ ] Validácia formátu (len PDF) a veľkosti
-- [ ] Automatické predvyplnenie príloh z už zadaných údajov kde je to možné
-- [ ] UI: zoznam príloh s indikátorom povinné/voliteľné/nahraté
+- [ ] UI pre upload príloh (živnostenský list, zmluvy, iné)
+- [ ] Validácia formátu (PDF) a veľkosti
+- [ ] Uloženie príloh do DB alebo objektového úložiska
 
-### 2b – Uloženie balíka
-- [ ] Databáza žiadostí (PostgreSQL + Prisma ORM)
-- [ ] Dátový model: žiadosť = XML + PDF + prílohy + metadata
-- [ ] Stavy žiadosti: `rozpracovaná → pripravená → odoslaná → vybavená`
-- [ ] Základná autentifikácia pre SZČO (email + heslo)
-- [ ] Dashboard: prehľad žiadostí používateľa
+### 2c – Podanie žiadosti
+- [ ] Tlačidlo "Podať žiadosť" namiesto "Stiahnuť XML"
+- [ ] Potvrdzovacie okno pred podaním
+- [ ] Potvrdenie pre SZČO po úspešnom podaní (stránka / email)
 
 ---
 
-## Fáza 3 – Poloautomatické odoslanie (manuálny most) 🖐️
+## Fáza 3 – Admin rozhranie 🛠️
 
-> Cieľ: Používateľ odošle sám, ale systém mu maximálne pomôže
+> Cieľ: Ty ako správca vidíš žiadosti a môžeš ich spracovať
 
-- [ ] Krok-za-krokom inštrukcie pre odoslanie na eformulare.socpoist.sk
-- [ ] Export celého balíka do ZIP (XML + PDF + prílohy)
-- [ ] Checklist pred odoslaním (všetky prílohy, validácia, dátumy)
-- [ ] Manuálne zaznačenie stavu "odoslané" + dátum odoslania
-- [ ] História pokusov o odoslanie
-
----
-
-## Fáza 4 – Integrácia eID + eFormulare 🔐
-
-> Cieľ: Prihlásenie cez eID na eformulare.socpoist.sk a automatická príprava
-
-### 4a – Autentifikácia
-- [ ] Integrácia **eID / login.gov.sk** (OAuth2/SAML)
-- [ ] Prepojenie identity SZČO s jej žiadosťami v systéme
-- [ ] Bezpečné ukladanie session tokenov
-
-### 4b – Automatická príprava na portáli
-- [ ] Browser automation (Playwright) – automatické vyplnenie formulára
-- [ ] Priloženie príloh cez automatizáciu
-- [ ] Overenie pred odoslaním (náhľad vyplneného formulára)
-- [ ] Fallback na manuálny postup pri zlyhaní automatizácie
-
-> ⚠️ Táto fáza závisí od stability portálu eformulare.socpoist.sk a dostupnosti API.
+- [ ] Jednoduché admin rozhranie (samostatná URL, napr. `/admin`)
+- [ ] Základná ochrana adminu (HTTP Basic Auth alebo env token)
+- [ ] Zoznam žiadostí s filtrom podľa stavu a typu
+- [ ] Detail žiadosti – zobrazenie vyplnených dát
+- [ ] Generovanie XML zo žiadosti (zo dát v DB)
+- [ ] Stiahnutie ZIP balíka (XML + všetky prílohy)
+- [ ] Zmena stavu žiadosti (skontrolovaná / odoslaná / vybavená)
+- [ ] Poznámka správcu ku každej žiadosti
 
 ---
 
-## Fáza 5 – Podpisovanie cez D.Suite / D.Signer ✍️
+## Fáza 4 – Notifikácie 📬
 
-> Cieľ: Kvalifikovaný elektronický podpis dokumentov
+> Cieľ: SZČO dostane potvrdenie, správca dostane upozornenie
 
-- [ ] Integrácia **D.Suite / D.Signer API** pre KEP (kvalifikovaný el. podpis)
-- [ ] Podpis XML súboru pred odoslaním
-- [ ] Podpis PDF príloh
-- [ ] Overenie platnosti podpisu pred odoslaním
-- [ ] Uloženie podpísanej verzie do balíka
-- [ ] UI: indikátor stavu podpisu (nepodpísané / podpisuje sa / podpísané)
+- [ ] Email SZČO: potvrdenie o prijatí žiadosti
+- [ ] Email správcu: notifikácia o novej žiadosti
+- [ ] Email SZČO: informácia o stave (odoslaná / vybavená)
+- [ ] Nodemailer alebo SendGrid
 
 ---
 
-## Fáza 6 – Sledovanie stavu a doručenie potvrdenia 📬
+## Fáza 5 – Autentifikácia používateľov 🔐 *(voliteľná)*
 
-> Cieľ: Automatické zachytenie odpovede od Sociálnej poisťovne
+> Cieľ: SZČO sa prihlási a vidí históriu svojich žiadostí
 
-### 6a – Slovensko.sk / GovBox
-- [ ] Integrácia **GovBox API** (elektronická schránka na slovensko.sk)
-- [ ] Monitoring schránky na nové správy týkajúce sa odoslaných žiadostí
-- [ ] Automatické párovanie správ so žiadosťami v systéme
-- [ ] Parsovanie potvrdenia o prijatí
-
-### 6b – Notifikácie
-- [ ] E-mail SZČO: potvrdenie o podaní (automaticky po odoslaní)
-- [ ] E-mail SZČO: doručený dokument A1 (príloha PDF)
-- [ ] Voliteľne: SMS notifikácia
-- [ ] In-app notifikácie (badge, toast)
+- [ ] Registrácia / prihlásenie (email + heslo)
+- [ ] Prepojenie žiadostí s účtom
+- [ ] Dashboard SZČO – história podaní a ich stav
+- [ ] Prípadne: prihlásenie cez eID / login.gov.sk
 
 ---
 
-## Fáza 7 – Platobný systém 💳
+## Fáza 6 – Platobný systém 💳 *(voliteľná)*
 
 > Cieľ: Monetizácia aplikácie
 
 - [ ] Výber platobnej brány (Stripe alebo GP WebPay)
-- [ ] Cenový model: *per žiadosť* alebo *predplatné* (mesačné/ročné)
-- [ ] Automatická faktúrácia (pre účtovníkov/sprostredkovateľov)
-- [ ] Free tier: napr. 1 žiadosť zadarmo pre nových používateľov
-- [ ] Správa predplatného (zrušenie, zmena plánu)
-- [ ] Webhook pre platobné udalosti
+- [ ] Cenový model: *per žiadosť* alebo *predplatné*
+- [ ] Platba pred podaním žiadosti
+- [ ] Automatická faktúrácia
 
 ---
 
-## Technologický stack – plánované rozšírenie
+## Technologický stack
 
 | Vrstva | Súčasný stav | Plánované |
 |---|---|---|
-| Frontend | React + TypeScript + Tailwind | + dashboard, upload |
-| Backend | Express.js | + REST API, auth, WebSocket |
+| Frontend | React + TypeScript + Tailwind | + upload príloh, admin UI |
+| Backend | Express.js | + Prisma, file handling |
 | PDF gen | Python + pypdf | zachovať |
+| XML validácia | Python + lxml + XSD | zachovať |
 | Databáza | — | PostgreSQL + Prisma ORM |
-| Auth | — | eID OAuth2 + lokálna session |
-| Podpis | — | D.Suite / D.Signer API |
-| Schránka | — | GovBox API |
-| Notifikácie | — | Nodemailer / SendGrid |
-| Platby | — | Stripe alebo GP WebPay |
-| Automation | — | Playwright |
+| Úložisko príloh | — | DB blob alebo S3/R2 |
+| Email | — | Nodemailer / SendGrid |
+| Admin auth | — | HTTP Basic / env token |
+| Používateľský auth | — | JWT alebo session (neskôr) |
+| eID | — | login.gov.sk (neskôr) |
+| Platby | — | Stripe alebo GP WebPay (neskôr) |
 
 ---
 
-## Odporúčané poradie priorít
+## Odporúčané poradie
 
 ```
-Fáza 1 (dokončenie) → Fáza 2 → Fáza 3 → Fáza 5 → Fáza 4 → Fáza 6 → Fáza 7
+Fáza 1 → Fáza 2 → Fáza 3 → Fáza 4 → Fáza 5 → Fáza 6
 ```
 
-> **Prečo Fáza 3 pred Fázou 4?**
-> Manuálny most umožní reálne používanie aplikácie oveľa skôr, kým sa dokončí
-> plná automatizácia. Fáza 4 závisí od stability portálu SP a dostupnosti API.
-
 ---
 
-## Ako prispieť / sledovať postup
-
-Každá fáza bude rozdelená na GitHub Issues s labelmi:
-- `faza-1`, `faza-2`, ... `faza-7`
-- `bug`, `enhancement`, `research`
-- `blocked` – úlohy čakajúce na externú závislosť (API SP, GovBox, eID)
-
----
-
-*Naposledy aktualizované: 2026-03-31*
+*Naposledy aktualizované: 2026-04-24*
