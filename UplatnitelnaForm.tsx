@@ -65,9 +65,10 @@ const RemoveBtn = ({ onClick }: { onClick: () => void }) => (
 interface Props {
   formData: UplatnitelnaFormDataState;
   setFormData: React.Dispatch<React.SetStateAction<UplatnitelnaFormDataState>>;
+  onReset: () => void;
 }
 
-const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData }) => {
+const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData, onReset }) => {
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
@@ -521,7 +522,7 @@ const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData }) => {
               </svg>
               {submitSuccess}
             </div>
-            <button type="button" onClick={() => setSubmitSuccess(null)}
+            <button type="button" onClick={onReset}
               className="text-sm text-blue-600 dark:text-blue-400 underline">
               Podať ďalšiu žiadosť
             </button>

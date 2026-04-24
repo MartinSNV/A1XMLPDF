@@ -348,7 +348,10 @@ const App: React.FC = () => {
               Vyplňte formulár a stiahnite XML pre podanie na Sociálnu poisťovňu
             </p>
           </div>
-          <UplatnitelnaForm formData={uplatnitelnaData} setFormData={setUplatnitelnaData} />
+          <UplatnitelnaForm formData={uplatnitelnaData} setFormData={setUplatnitelnaData} onReset={() => {
+            setUplatnitelnaData(initialUplatnitelnaData());
+            setStep('welcome');
+          }} />
         </main>
       </div>
     );
@@ -619,7 +622,12 @@ const App: React.FC = () => {
                   </svg>
                   {submitSuccess}
                 </div>
-                <button type="button" onClick={() => { setSubmitSuccess(null); }}
+                <button type="button" onClick={() => {
+                    setSubmitSuccess(null);
+                    setFormData(initialFormData);
+                    setAttachments([]);
+                    setStep('welcome');
+                  }}
                   className="text-sm text-blue-600 dark:text-blue-400 underline">
                   Podať ďalšiu žiadosť
                 </button>
