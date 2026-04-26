@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 
 interface CapturedPhoto {
   id: string;
@@ -84,7 +85,7 @@ const CameraCapture: React.FC<Props> = ({ onDone, onClose }) => {
     onClose();
   };
 
-  return (
+  return ReactDOM.createPortal(
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
 
       {/* Header */}
@@ -183,7 +184,8 @@ const CameraCapture: React.FC<Props> = ({ onDone, onClose }) => {
           </button>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 };
 
