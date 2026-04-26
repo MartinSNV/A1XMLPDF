@@ -25,10 +25,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Multer — súbory len v pamäti (ukladáme do DB)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // max 10MB na súbor
+  limits: { fileSize: 20 * 1024 * 1024 }, // max 20MB na súbor
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype === "application/pdf") cb(null, true);
-    else cb(new Error("Povolené sú len PDF súbory"));
+    const allowed = [
+      'application/pdf',
+      'image/jpeg', 'image/jpg', 'image/png',
+      'image/heic', 'image/heif', 'image/webp',
+    ];
+    if (allowed.includes(file.mimetype) || file.originalname.toLowerCase().endsWith('.heic') || file.originalname.toLowerCase().endsWith('.heif')) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Nepodporovaný formát: ${file.mimetype}. Povolené: PDF, JPG, PNG, HEIC, WebP`));
+    }
   },
 });
 

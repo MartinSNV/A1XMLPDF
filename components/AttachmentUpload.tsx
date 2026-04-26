@@ -3,7 +3,7 @@ import React, { useRef } from 'react';
 export interface AttachmentFile {
   file: File;
   attachmentType: string;
-  id: string; // lokálne ID pre key
+  id: string;
 }
 
 interface AttachmentDef {
@@ -12,7 +12,6 @@ interface AttachmentDef {
   required: boolean;
 }
 
-// Matica príloh podľa typu formulára
 export const ATTACHMENTS_PD_A1: AttachmentDef[] = [
   { type: 'zivnostenskyList', label: 'Živnostenský list / Výpis zo živnostenského registra', required: true },
   { type: 'dokladPobytu', label: 'Doklad o pobyte (OP alebo pas)', required: true },
@@ -27,34 +26,57 @@ export const ATTACHMENTS_UPLATNITELNA: AttachmentDef[] = [
   { type: 'ine', label: 'Iný doklad', required: false },
 ];
 
+const ALLOWED_TYPES = [
+  'application/pdf',
+  'image/jpeg', 'image/jpg', 'image/png',
+  'image/heic', 'image/heif', 'image/webp',
+];
+const ALLOWED_ACCEPT = '.pdf,.jpg,.jpeg,.png,.heic,.heif,.webp';
+const MAX_SIZE_MB = 20;
+
 interface Props {
   attachments: AttachmentFile[];
   setAttachments: React.Dispatch<React.SetStateAction<AttachmentFile[]>>;
   formType: 'PD_A1' | 'UPLATNITELNA_LEGISLATIVA';
 }
 
-const MAX_SIZE_MB = 10;
+const FileIcon: React.FC<{ mimeType: string }> = ({ mimeType }) => {
+  if (mimeType === 'application/pdf') {
+    return (
+      <svg className="h-5 w-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+      </svg>
+    );
+  }
+  return (
+    <svg className="h-5 w-5 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+      <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+    </svg>
+  );
+};
 
 const AttachmentUpload: React.FC<Props> = ({ attachments, setAttachments, formType }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [selectedType, setSelectedType] = React.useState('ine');
   const [error, setError] = React.useState<string | null>(null);
 
   const defs = formType === 'PD_A1' ? ATTACHMENTS_PD_A1 : ATTACHMENTS_UPLATNITELNA;
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const processFiles = (files: File[]) => {
     setError(null);
-    const files = Array.from(e.target.files || []);
-    const invalid = files.filter(f => f.type !== 'application/pdf');
+    const invalid = files.filter(f =>
+      !ALLOWED_TYPES.includes(f.type) &&
+      !f.name.toLowerCase().endsWith('.heic') &&
+      !f.name.toLowerCase().endsWith('.heif')
+    );
     if (invalid.length > 0) {
-      setError('Povolené sú len PDF súbory.');
-      e.target.value = '';
+      setError(`Nepodporovaný formát: ${invalid.map(f => f.name).join(', ')}. Povolené: PDF, JPG, PNG, HEIC, WebP`);
       return;
     }
     const tooBig = files.filter(f => f.size > MAX_SIZE_MB * 1024 * 1024);
     if (tooBig.length > 0) {
       setError(`Súbor je príliš veľký. Maximum je ${MAX_SIZE_MB} MB.`);
-      e.target.value = '';
       return;
     }
     const newFiles: AttachmentFile[] = files.map(f => ({
@@ -63,6 +85,11 @@ const AttachmentUpload: React.FC<Props> = ({ attachments, setAttachments, formTy
       id: `${Date.now()}-${Math.random()}`,
     }));
     setAttachments(prev => [...prev, ...newFiles]);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length) processFiles(files);
     e.target.value = '';
   };
 
@@ -77,7 +104,12 @@ const AttachmentUpload: React.FC<Props> = ({ attachments, setAttachments, formTy
 
   const getLabel = (type: string) => defs.find(d => d.type === type)?.label || 'Iný doklad';
 
-  // Zobraziť ktoré povinné prílohy ešte chýbajú
+  const getFileTypeLabel = (file: File) => {
+    if (file.type === 'application/pdf') return 'PDF';
+    if (file.type.startsWith('image/')) return 'Obrázok';
+    return file.name.split('.').pop()?.toUpperCase() || 'Súbor';
+  };
+
   const missingRequired = defs
     .filter(d => d.required)
     .filter(d => !attachments.some(a => a.attachmentType === d.type));
@@ -101,12 +133,9 @@ const AttachmentUpload: React.FC<Props> = ({ attachments, setAttachments, formTy
                   ? 'border-orange-300 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-700'
                   : 'border-gray-200 bg-gray-50 dark:bg-slate-700 dark:border-gray-600'
               }`}>
-              {ok
-                ? <span className="text-green-600 dark:text-green-400 text-lg">✓</span>
-                : def.required
-                  ? <span className="text-orange-500 text-lg">!</span>
-                  : <span className="text-gray-400 text-lg">○</span>
-              }
+              {ok ? <span className="text-green-600 dark:text-green-400 text-lg">✓</span>
+                : def.required ? <span className="text-orange-500 text-lg">!</span>
+                : <span className="text-gray-400 text-lg">○</span>}
               <div>
                 <p className={`text-sm font-medium ${ok ? 'text-green-800 dark:text-green-300' : 'text-gray-700 dark:text-gray-300'}`}>
                   {def.label}
@@ -120,52 +149,61 @@ const AttachmentUpload: React.FC<Props> = ({ attachments, setAttachments, formTy
         })}
       </div>
 
-      {/* Upload sekcia */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+      {/* Typ prílohy */}
+      <div className="mb-3">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Typ prílohy</label>
         <select
           value={selectedType}
           onChange={e => setSelectedType(e.target.value)}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm">
-          {defs.map(d => (
-            <option key={d.type} value={d.type}>{d.label}</option>
-          ))}
+          className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm">
+          {defs.map(d => <option key={d.type} value={d.type}>{d.label}</option>)}
         </select>
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-          </svg>
-          Pridať PDF súbor
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/pdf"
-          multiple
-          className="hidden"
-          onChange={handleFileChange}
-        />
       </div>
 
+      {/* Tlačidlá */}
+      <div className="flex flex-wrap gap-3 mb-2">
+        <button type="button" onClick={() => fileInputRef.current?.click()}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          Nahrať súbor
+        </button>
+
+        <button type="button" onClick={() => cameraInputRef.current?.click()}
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors">
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Odfotiť dokument
+        </button>
+
+        <input ref={fileInputRef} type="file" accept={ALLOWED_ACCEPT} multiple className="hidden" onChange={handleFileChange} />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={handleFileChange} />
+      </div>
+
+      <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+        Povolené: PDF, JPG, PNG, HEIC, WebP · Max. {MAX_SIZE_MB} MB na súbor
+      </p>
+
       {error && (
-        <p className="text-sm text-red-600 dark:text-red-400 mb-3">{error}</p>
+        <p className="text-sm text-red-600 dark:text-red-400 mb-3 p-2 bg-red-50 dark:bg-red-900/20 rounded-lg">{error}</p>
       )}
 
-      {/* Zoznam nahratých súborov */}
+      {/* Zoznam súborov */}
       {attachments.length > 0 && (
         <ul className="space-y-2">
           {attachments.map(att => (
             <li key={att.id}
               className="flex items-center justify-between gap-3 p-3 bg-gray-50 dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-gray-600">
               <div className="flex items-center gap-3 min-w-0">
-                <svg className="h-5 w-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
-                </svg>
+                <FileIcon mimeType={att.file.type} />
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{att.file.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{getLabel(att.attachmentType)} · {formatSize(att.file.size)}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {getLabel(att.attachmentType)} · {getFileTypeLabel(att.file)} · {formatSize(att.file.size)}
+                  </p>
                 </div>
               </div>
               <button type="button" onClick={() => removeAttachment(att.id)}
@@ -179,7 +217,6 @@ const AttachmentUpload: React.FC<Props> = ({ attachments, setAttachments, formTy
         </ul>
       )}
 
-      {/* Upozornenie na chýbajúce povinné prílohy */}
       {missingRequired.length > 0 && (
         <p className="mt-3 text-xs text-orange-600 dark:text-orange-400">
           Chýbajú povinné prílohy: {missingRequired.map(d => d.label).join(', ')}
