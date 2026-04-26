@@ -250,3 +250,90 @@ export const generateA1Xml = (formData: FormDataState): void => {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 };
+
+export const generateA1XmlString = (formData: FormDataState): string => {
+  const today = new Date().toISOString().split('T')[0];
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<ApplicationForTheIssueOfAPortableDocumentDueToSzcoPosting xmlns="http://schemas.gov.sk/form/30807484.Ziadost_o_vystavenie_prenosneho_dokumentu_A1_z_dovodu_vyslania_SZCO.sk.pda/12.0">
+  <Applicant>
+    <PersonData>
+      <PhysicalPerson>
+        <PersonName>
+          <GivenName>${escapeXml(formData.meno)}</GivenName>
+          <FamilyName>${escapeXml(formData.priezvisko)}</FamilyName>
+          <GivenFamilyName>${escapeXml(formData.rodnePriezvisko || formData.priezvisko)}</GivenFamilyName>
+          ${renderAffix('Affix', 'prefix', formData.titulPred, 'CL000062')}
+          ${renderAffix('Affix', 'postfix', formData.titulZa, 'CL000063')}
+        </PersonName>
+        <Birth>
+          <DateOfBirth>${escapeXml(formData.datumNarodenia)}</DateOfBirth>
+          <BirthPlace>${escapeXml(formData.miestoNarodenia || formData.adresaPobytu.obec)}</BirthPlace>
+          ${renderCodelist('BirthCountry', 'CL000086', COUNTRY_MAP[formData.statNarodenia] || '703', formData.statNarodenia)}
+        </Birth>
+        ${renderCodelist('Nationality', 'CL010131', COUNTRY_MAP[formData.statnaPrislusnost] || '703', formData.statnaPrislusnost)}
+        ${renderCodelist('Gender', 'CL003003', formData.pohlavie === 'Žena' ? '2' : '1', formData.pohlavie === 'Žena' ? 'žena' : 'muž')}
+      </PhysicalPerson>
+      ${renderPhysicalAddress(formData.adresaPobytu)}
+      <ID>
+        <IdentifierType><Codelist><CodelistCode>CL004001</CodelistCode><CodelistItem><ItemCode>9</ItemCode><ItemName>Rodné číslo</ItemName></CodelistItem></Codelist></IdentifierType>
+        <IdentifierValue>${escapeXml(formData.rodneCislo.replace(/\//g, ''))}</IdentifierValue>
+      </ID>
+      <TelephoneAddress><Number><FormattedNumber>${escapeXml(formData.telefon)}</FormattedNumber></Number></TelephoneAddress>
+      <ElectronicAddress><InternetAddress><Address>mailto:${escapeXml(formData.email)}</Address></InternetAddress></ElectronicAddress>
+    </PersonData>
+    <ResidencePermit>${formData.pobytovyPreukaz}</ResidencePermit>
+  </Applicant>
+  <Posting>
+    <PersonData>
+      <CorporateBody><CorporateBodyFullName>${escapeXml(formData.obchodneMeno)}</CorporateBodyFullName></CorporateBody>
+      ${renderPhysicalAddress(formData.adresaMiestaPodnikania.ulica ? formData.adresaMiestaPodnikania : formData.adresaPobytu)}
+      <ID>
+        ${renderCodelist('IdentifierType', 'CL004001', '7', 'IČO (Identifikačné číslo organizácie)')}
+        <IdentifierValue>${escapeXml(formData.ico)}</IdentifierValue>
+      </ID>
+    </PersonData>
+    <SzcoDateStart>${escapeXml(formData.datumZaciatkuCinnosti)}</SzcoDateStart>
+    ${formData.prerusenieZivnosti ? `<Suspension><SuspensionValue>true</SuspensionValue><Period><Start>${escapeXml(formData.prerusenieOd)}</Start><End>${escapeXml(formData.prerusenieDo)}</End></Period></Suspension>` : `<Suspension><SuspensionValue>false</SuspensionValue></Suspension>`}
+    <SZCO>
+      <ActivityBeforeSending>${escapeXml(formData.cinnostSZCONaSlovensku)}</ActivityBeforeSending>
+      <ActivityDuringSending>${escapeXml(formData.popisCinnosti)}</ActivityDuringSending>
+      <EndingOfSending>${formData.obvykleMiestoVykonuCinnosti}</EndingOfSending>
+      <RetainingPremises>${formData.zachovaPriestory}</RetainingPremises>
+    </SZCO>
+    <RealActivityInSlovakia>
+      <Start>${escapeXml(formData.skutocnaCinnostOd || formData.datumZaciatkuCinnosti)}</Start>
+      <End>${escapeXml(formData.skutocnaCinnostDo || formData.datumZaciatkuVyslania)}</End>
+      <Amount>${escapeXml(formData.skutocnaCinnostHodinMesacne || '0')}</Amount>
+    </RealActivityInSlovakia>
+    <Places>
+      ${renderCodelist('Country', 'CL000086', COUNTRY_MAP[formData.statVyslania] || '276', formData.statVyslania)}
+      <Place>
+        <PersonData>
+          <CorporateBody><CorporateBodyFullName>${escapeXml(formData.obchodneMenoPrijimajucejOsoby)}</CorporateBodyFullName></CorporateBody>
+          ${renderPhysicalAddress(formData.adresaVyslania)}
+          <ID>
+            <IdentifierType><Codelist><CodelistCode>CL004001</CodelistCode><CodelistItem><ItemCode>7</ItemCode><ItemName>IČO</ItemName></CodelistItem></Codelist></IdentifierType>
+            <IdentifierValue>${escapeXml(formData.icoPrijimajucejOsoby || '-')}</IdentifierValue>
+          </ID>
+        </PersonData>
+      </Place>
+      ${(formData.dalsieMiestaVyslania || []).map((miesto: MiestoVyslania) => `<Place><PersonData><CorporateBody><CorporateBodyFullName>${escapeXml(miesto.obchodneMeno)}</CorporateBodyFullName></CorporateBody>${renderPhysicalAddress(miesto.adresa)}<ID><IdentifierType><Codelist><CodelistCode>CL004001</CodelistCode><CodelistItem><ItemCode>7</ItemCode><ItemName>IČO</ItemName></CodelistItem></Codelist></IdentifierType><IdentifierValue>${escapeXml(miesto.ico || '-')}</IdentifierValue></ID></PersonData></Place>`).join('')}
+    </Places>
+    <SendingDuration>
+      <Start>${escapeXml(formData.datumZaciatkuVyslania)}</Start>
+      <End>${escapeXml(formData.datumKoncaVyslania)}</End>
+    </SendingDuration>
+    ${formData.cinnostVStatePredVyslanim ? `<PreviousSendingToState><Value>true</Value><Period><Start>${escapeXml(formData.cinnostVStatePredOd)}</Start><End>${escapeXml(formData.cinnostVStatePredDo)}</End></Period></PreviousSendingToState>` : `<PreviousSendingToState><Value>false</Value></PreviousSendingToState>`}
+    ${(() => { const nace = NACE_CATEGORIES.find(n => n.code === formData.skNace); return renderCodelist('EconomicClassification', 'ICL001013', formData.skNace || 'F', nace ? nace.name : 'F – Stavebníctvo'); })()}
+    <DocumentIssued><Value>false</Value></DocumentIssued>
+  </Posting>
+  <OtherInformation>
+    ${formData.vydanyVInejKrajine ? `<OtherCountryIssue><Value>true</Value><Document><IssueDate><Start>${escapeXml(formData.vydanyVInejKrajineOd)}</Start><End>${escapeXml(formData.vydanyVInejKrajineDo)}</End></IssueDate><DayOfIssue>${escapeXml(formData.vydanyVInejKrajineDatum)}</DayOfIssue><Institution>${escapeXml(formData.vydanyVInejKrajineInstitucia)}</Institution></Document></OtherCountryIssue>` : `<OtherCountryIssue><Value>false</Value></OtherCountryIssue>`}
+    ${formData.poznamka ? `<AdditionalInfo>${escapeXml(formData.poznamka)}</AdditionalInfo>` : ''}
+  </OtherInformation>
+  <Date>${today}</Date>
+  <Declaration><TrueData>true</TrueData></Declaration>
+  <ContactBranchOffice>${renderCodelist('Codelist', 'ICL001013', formData.pobocka || 'BA', 'Bratislava')}</ContactBranchOffice>
+  <IsForeigner>${formData.isForeigner}</IsForeigner>
+</ApplicationForTheIssueOfAPortableDocumentDueToSzcoPosting>`.trim();
+};

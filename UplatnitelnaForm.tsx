@@ -6,7 +6,7 @@ import SelectField from './components/SelectField';
 import CheckboxField from './components/CheckboxField';
 import AddressFields from './components/AddressFields';
 import { COUNTRIES, BRANCH_OFFICES, NACE_CATEGORIES, TITLES_BEFORE, TITLES_AFTER } from './constants';
-import { generateUplatnitelnaXml } from './utilsUplatnitelna';
+import { generateUplatnitelnaXml, generateUplatnitelnaXmlString } from './utilsUplatnitelna';
 import AttachmentUpload, { type AttachmentFile } from './components/AttachmentUpload';
 
 const emptyAddress: Address = { ulica: '', supisneCislo: '', orientacneCislo: '', obec: '', psc: '', stat: 'Slovenská republika' };
@@ -76,10 +76,28 @@ const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData, onReset }) =
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // B2 — Potvrdzovacie okno
+    if (!window.confirm('Naozaj chcete podať žiadosť? Po odoslaní ju nebude možné upraviť.')) return;
+
     setSubmitLoading(true);
     setSubmitError(null);
     setSubmitSuccess(null);
     try {
+      // B1 — XSD validácia pred odoslaním
+      const xml = generateUplatnitelnaXmlString(formData);
+      const validateRes = await fetch('/api/validate-xml', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ xml, typ: 'uplatnitelna' }),
+      });
+      const validateData = await validateRes.json();
+      if (!validateData.valid) {
+        setSubmitError(`XML nie je platné voči schéme SP:\n${validateData.errors.slice(0, 3).join('\n')}`);
+        setSubmitLoading(false);
+        return;
+      }
+
       const fd = new FormData();
       fd.append('formType', 'UPLATNITELNA_LEGISLATIVA');
       fd.append('formData', JSON.stringify(formData));
