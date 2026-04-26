@@ -1,4 +1,5 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
+import CameraCapture from './CameraCapture';
 
 export interface AttachmentFile {
   file: File;
@@ -60,6 +61,12 @@ const AttachmentUpload: React.FC<Props> = ({ attachments, setAttachments, formTy
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [selectedType, setSelectedType] = React.useState('ine');
   const [error, setError] = React.useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+
+  const handleCameraDone = (photos: File[]) => {
+    setCameraOpen(false);
+    if (photos.length > 0) processFiles(photos);
+  };
 
   const defs = formType === 'PD_A1' ? ATTACHMENTS_PD_A1 : ATTACHMENTS_UPLATNITELNA;
 
@@ -170,7 +177,7 @@ const AttachmentUpload: React.FC<Props> = ({ attachments, setAttachments, formTy
           Nahrať súbor
         </button>
 
-        <button type="button" onClick={() => cameraInputRef.current?.click()}
+        <button type="button" onClick={() => setCameraOpen(true)}
           className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors">
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -180,7 +187,14 @@ const AttachmentUpload: React.FC<Props> = ({ attachments, setAttachments, formTy
         </button>
 
         <input ref={fileInputRef} type="file" accept={ALLOWED_ACCEPT} multiple className="hidden" onChange={handleFileChange} />
-        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={handleFileChange} />
+
+        {/* Camera modal */}
+        {cameraOpen && (
+          <CameraCapture
+            onDone={handleCameraDone}
+            onClose={() => setCameraOpen(false)}
+          />
+        )}
       </div>
 
       <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
