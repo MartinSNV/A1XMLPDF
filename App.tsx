@@ -66,6 +66,8 @@ const App: React.FC = () => {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
   const [signatureBase64, setSignatureBase64] = useState<string | null>(null);
+  const [uplatnitelnaSignatureBase64, setUplatnitelnaSignatureBase64] = useState<string | null>(null);
+  const [uplatnitelnaAttachments, setUplatnitelnaAttachments] = useState<AttachmentFile[]>([]);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -368,8 +370,18 @@ const App: React.FC = () => {
               Vyplňte formulár a stiahnite XML pre podanie na Sociálnu poisťovňu
             </p>
           </div>
-          <UplatnitelnaForm formData={uplatnitelnaData} setFormData={setUplatnitelnaData} onReset={() => {
+          <UplatnitelnaForm
+            formData={uplatnitelnaData}
+            setFormData={setUplatnitelnaData}
+            signatureBase64={uplatnitelnaSignatureBase64}
+            onRequestSignature={(atts) => {
+              setUplatnitelnaAttachments(atts);
+              setStep('poa-uplatnitelna');
+            }}
+            onReset={() => {
             setUplatnitelnaData(initialUplatnitelnaData());
+            setUplatnitelnaSignatureBase64(null);
+            setUplatnitelnaAttachments([]);
             setStep('welcome');
           }} />
         </main>
@@ -388,6 +400,21 @@ const App: React.FC = () => {
           setStep('form');
         }}
         onBack={() => setStep('form')}
+      />
+    );
+  }
+
+  // ── Splnomocnenie — Uplatniteľná legislatíva ────────────────────────────
+  if (step === 'poa-uplatnitelna') {
+    return (
+      <PowerOfAttorney
+        formData={uplatnitelnaData}
+        formType="UPLATNITELNA_LEGISLATIVA"
+        onSign={(sig) => {
+          setUplatnitelnaSignatureBase64(sig);
+          setStep('uplatnitelna');
+        }}
+        onBack={() => setStep('uplatnitelna')}
       />
     );
   }
