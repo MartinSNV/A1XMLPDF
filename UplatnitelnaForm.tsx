@@ -66,41 +66,33 @@ interface Props {
   formData: UplatnitelnaFormDataState;
   setFormData: React.Dispatch<React.SetStateAction<UplatnitelnaFormDataState>>;
   onReset: () => void;
+  onRequestSignature: (attachments: AttachmentFile[]) => void;
+  signatureBase64: string | null;
 }
 
-const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData, onReset }) => {
+const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData, onReset, onRequestSignature, signatureBase64 }) => {
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Keď sa vrátime zo splnomocnenia so podpisom, automaticky odošleme
+  React.useEffect(() => {
+    if (signatureBase64 && !submitSuccess && !submitLoading) {
+      void doSubmit(signatureBase64);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signatureBase64]);
 
-    // B2 — Potvrdzovacie okno
-    if (!window.confirm('Naozaj chcete podať žiadosť? Po odoslaní ju nebude možné upraviť.')) return;
-
+  const doSubmit = async (signature: string) => {
     setSubmitLoading(true);
     setSubmitError(null);
     setSubmitSuccess(null);
     try {
-      // B1 — XSD validácia pred odoslaním
-      const xml = generateUplatnitelnaXmlString(formData);
-      const validateRes = await fetch('/api/validate-xml', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ xml, typ: 'uplatnitelna' }),
-      });
-      const validateData = await validateRes.json();
-      if (!validateData.valid) {
-        setSubmitError(`XML nie je platné voči schéme SP:\n${validateData.errors.slice(0, 3).join('\n')}`);
-        setSubmitLoading(false);
-        return;
-      }
-
       const fd = new FormData();
       fd.append('formType', 'UPLATNITELNA_LEGISLATIVA');
       fd.append('formData', JSON.stringify(formData));
+      fd.append('signatureBase64', signature);
       fd.append('attachmentMeta', JSON.stringify(attachments.map(a => ({ attachmentType: a.attachmentType }))));
       attachments.forEach(a => fd.append('attachments', a.file));
 
@@ -117,6 +109,36 @@ const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData, onReset }) =
     } finally {
       setSubmitLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // B2 — Potvrdzovacie okno
+    if (!window.confirm('Naozaj chcete podať žiadosť? Po odoslaní ju nebude možné upraviť.')) return;
+
+    setSubmitError(null);
+
+    // B1 — XSD validácia pred odoslaním
+    try {
+      const xml = generateUplatnitelnaXmlString(formData);
+      const validateRes = await fetch('/api/validate-xml', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ xml, typ: 'uplatnitelna' }),
+      });
+      const validateData = await validateRes.json();
+      if (!validateData.valid) {
+        setSubmitError(`XML nie je platné voči schéme SP:\n${validateData.errors.slice(0, 3).join('\n')}`);
+        return;
+      }
+    } catch {
+      setSubmitError('Chyba pri validácii XML. Skúste znova.');
+      return;
+    }
+
+    // B4 — Presmerovanie na splnomocnenie
+    onRequestSignature(attachments);
   };
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -530,8 +552,31 @@ const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData, onReset }) =
         formType="UPLATNITELNA_LEGISLATIVA"
       />
 
+      {/* ── Splnomocnenie indikátor ── */}
+      <div className="mt-8 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 flex items-start gap-3">
+        {signatureBase64 ? (
+          <svg className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        ) : (
+          <svg className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        )}
+        <div>
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+            {signatureBase64 ? 'Splnomocnenie podpísané ✓' : 'Splnomocnenie je povinné'}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            {signatureBase64
+              ? 'Podpis bol uložený. Kliknutím na "Podať žiadosť" odošlete formulár.'
+              : 'Po kliknutí na "Podať žiadosť" budete presmerovaný na podpis splnomocnenia.'}
+          </p>
+        </div>
+      </div>
+
       {/* ── Tlačidlo ── */}
-      <div className="mt-12 flex flex-col items-center justify-center pb-12 gap-4">
+      <div className="mt-6 flex flex-col items-center justify-center pb-12 gap-4">
         {submitSuccess ? (
           <div className="flex flex-col items-center gap-3">
             <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-semibold text-lg">
@@ -563,7 +608,7 @@ const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData, onReset }) =
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
-                Podať žiadosť
+                {signatureBase64 ? 'Podať žiadosť' : 'Pokračovať na splnomocnenie'}
               </>
             )}
           </button>
