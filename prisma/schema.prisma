@@ -25,6 +25,9 @@ model DocumentBundle {
   // Vygenerovaný XML (vypĺňa správca)
   xmlContent  String?
 
+  // Podpis splnomocnenia (base64 PNG)
+  signatureBase64 String?
+
   // Poznámka správcu
   adminNote   String?
 
