@@ -12,6 +12,7 @@ import { generateA1Xml, generateA1XmlString, parseBirthDateFromRc } from './util
 import { useRpo } from './hooks/useRpo';
 import UplatnitelnaForm, { initialUplatnitelnaData } from './UplatnitelnaForm';
 import AttachmentUpload, { type AttachmentFile } from './components/AttachmentUpload';
+import PowerOfAttorney from './components/PowerOfAttorney';
 
 const emptyAddress: Address = { ulica: '', supisneCislo: '', orientacneCislo: '', obec: '', psc: '', stat: 'Slovenská republika' };
 const emptyMiesto = (): MiestoVyslania => ({ obchodneMeno: '', ico: '', adresa: { ...emptyAddress, stat: '' } });
@@ -58,12 +59,13 @@ const PdfIcon = () => (
 );
 
 const App: React.FC = () => {
-  const [step, setStep] = useState<'welcome' | 'select' | 'form' | 'uplatnitelna'>('welcome');
+  const [step, setStep] = useState<'welcome' | 'select' | 'form' | 'uplatnitelna' | 'power-of-attorney' | 'poa-uplatnitelna'>('welcome');
   const [formData, setFormData] = useState<FormDataState>(initialFormData);
   const [uplatnitelnaData, setUplatnitelnaData] = useState<UplatnitelnaFormDataState>(initialUplatnitelnaData());
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
+  const [signatureBase64, setSignatureBase64] = useState<string | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -142,6 +144,7 @@ const App: React.FC = () => {
       const fd = new FormData();
       fd.append('formType', 'PD_A1');
       fd.append('formData', JSON.stringify(formData));
+      if (signatureBase64) fd.append('signatureBase64', signatureBase64);
       fd.append('attachmentMeta', JSON.stringify(attachments.map(a => ({ attachmentType: a.attachmentType }))));
       attachments.forEach(a => fd.append('attachments', a.file));
 
@@ -371,6 +374,21 @@ const App: React.FC = () => {
           }} />
         </main>
       </div>
+    );
+  }
+
+  // ── Splnomocnenie — PD A1 ───────────────────────────────────────────────
+  if (step === 'power-of-attorney') {
+    return (
+      <PowerOfAttorney
+        formData={formData}
+        formType="PD_A1"
+        onSign={(sig) => {
+          setSignatureBase64(sig);
+          setStep('form');
+        }}
+        onBack={() => setStep('form')}
+      />
     );
   }
 
@@ -619,6 +637,29 @@ const App: React.FC = () => {
             formType="PD_A1"
           />
 
+          {/* ── Splnomocnenie banner ── */}
+          {!signatureBase64 && (
+            <div className="mt-4 mb-2 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl flex items-center gap-3">
+              <svg className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                Pred odoslaním žiadosti je potrebné podpísať splnomocnenie. Kliknite na <strong>Podpísať splnomocnenie</strong>.
+              </p>
+            </div>
+          )}
+          {signatureBase64 && (
+            <div className="mt-4 mb-2 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-center gap-3">
+              <svg className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <p className="text-sm text-green-700 dark:text-green-300">
+                Splnomocnenie je podpísané. Môžete podať žiadosť.
+              </p>
+              <button type="button" onClick={() => setSignatureBase64(null)} className="ml-auto text-xs text-green-600 dark:text-green-400 underline">Znovu podpísať</button>
+            </div>
+          )}
+
           {/* ── Tlačidlá ── */}
           <div className="mt-12 flex flex-col items-center justify-center pb-12 gap-4">
             {dateError && (
@@ -651,22 +692,35 @@ const App: React.FC = () => {
               </div>
             ) : (
               <div className="flex flex-col sm:flex-row gap-4 items-center">
-                <button
-                  type="button"
-                  disabled={!!dateError || submitLoading}
-                  onClick={handleSubmit}
-                  className={`flex items-center gap-2 font-bold py-4 px-12 rounded-2xl shadow-xl transition-all ${dateError || submitLoading ? 'bg-gray-400 cursor-not-allowed opacity-50 text-white' : 'bg-green-600 hover:bg-green-700 text-white hover:scale-105 active:scale-95'}`}>
-                  {submitLoading ? (
-                    <><SpinnerIcon />Odosielam...</>
-                  ) : (
-                    <>
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                      </svg>
-                      Podať žiadosť
-                    </>
-                  )}
-                </button>
+                {!signatureBase64 ? (
+                  <button
+                    type="button"
+                    disabled={!!dateError}
+                    onClick={() => setStep('power-of-attorney')}
+                    className={`flex items-center gap-2 font-bold py-4 px-10 rounded-2xl shadow-xl transition-all ${dateError ? 'bg-gray-400 cursor-not-allowed opacity-50 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 active:scale-95'}`}>
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                    Podpísať splnomocnenie
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!!dateError || submitLoading}
+                    onClick={handleSubmit}
+                    className={`flex items-center gap-2 font-bold py-4 px-12 rounded-2xl shadow-xl transition-all ${dateError || submitLoading ? 'bg-gray-400 cursor-not-allowed opacity-50 text-white' : 'bg-green-600 hover:bg-green-700 text-white hover:scale-105 active:scale-95'}`}>
+                    {submitLoading ? (
+                      <><SpinnerIcon />Odosielam...</>
+                    ) : (
+                      <>
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                        </svg>
+                        Podať žiadosť
+                      </>
+                    )}
+                  </button>
+                )}
                 <button type="button" disabled={!!dateError || pdfLoading} onClick={handleDownloadPdf}
                   className={`flex items-center gap-2 font-bold py-4 px-10 rounded-2xl shadow-xl transition-all ${dateError || pdfLoading ? 'bg-gray-400 cursor-not-allowed opacity-50 text-white' : 'bg-red-600 hover:bg-red-700 text-white hover:scale-105 active:scale-95'}`}>
                   {pdfLoading ? (<><SpinnerIcon />Generujem PDF...</>) : (<><PdfIcon />Stiahnuť PDF žiadosť</>)}
