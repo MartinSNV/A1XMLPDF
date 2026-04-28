@@ -5,15 +5,16 @@
 
 ---
 
-## Skutočný flow aplikácie
+## Skutočný flow aplikácie (aktualizovaný)
 
 ```
 SZČO                          Správca (ty)
 ────────────────────          ─────────────────────────
-1. Vyplní formulár            5. Vidí zoznam žiadostí
-2. Priloží prílohy            6. Vygeneruje XML
-3. Podá žiadosť               7. Stiahne ZIP (XML + prílohy)
-4. Uloží sa do DB             8. Odošle na SP
+1. Vyplní formulár            6. Vidí zoznam žiadostí
+2. Priloží prílohy            7. Vygeneruje XML
+3. Podpíše splnomocnenie      8. Stiahne ZIP (XML + prílohy + splnomocnenie)
+4. Podá žiadosť               9. Odošle na SP
+5. Uloží sa do DB
 ```
 
 ---
@@ -28,7 +29,7 @@ SZČO                          Správca (ty)
 - [x] Deploy na Northflank cez Docker
 - [x] XSD validácia XML voči schémam slovensko.sk (v12.0)
 - [x] PostgreSQL + Prisma ORM + Attachment model
-- [x] Upload príloh (PDF, max 10MB, s typmi)
+- [x] Upload príloh (PDF, max 20MB, s typmi, kamera)
 - [x] Tlačidlo "Podať žiadosť" → uloženie do DB s prílohami
 - [x] Potvrdenie po podaní + návrat na úvodnú obrazovku
 - [x] Admin rozhranie na /admin (HTTP Basic Auth)
@@ -38,6 +39,11 @@ SZČO                          Správca (ty)
 - [x] Stiahnutie jednotlivých príloh
 - [x] Zmena stavu žiadosti
 - [x] Poznámka správcu ku každej žiadosti
+- [x] Splnomocnenie pred odoslaním (PD A1)
+  - dynamický text z dát formulára (meno, IČO, adresa, typ žiadosti)
+  - canvas podpis myšou aj prstom (touch events)
+  - krok medzi prílohami a odoslaním; "Podať žiadosť" dostupné až po podpise
+  - signatureBase64 sa posiela na backend pri odoslaní
 
 ---
 
@@ -47,7 +53,7 @@ SZČO                          Správca (ty)
 
 - [ ] A1 – Trigger nový deploy na Northflank po posledných zmenách
 - [ ] A2 – Overiť že DATABASE_URL, ADMIN_USER, ADMIN_PASS sú nastavené
-- [ ] A3 – Otestovať podanie žiadosti v produkcii
+- [ ] A3 – Otestovať podanie žiadosti v produkcii (vrátane splnomocnenia)
 - [ ] A4 – Otestovať admin rozhranie v produkcii (ZIP, XML, prílohy)
 - [ ] A5 – Skontrolovať logy ak niečo nefunguje
 
@@ -57,10 +63,12 @@ SZČO                          Správca (ty)
 
 > Cieľ: Formuláre sú spoľahlivé a dávajú feedback
 
-- [ ] B1 – Zobraziť chyby XSD validácie priamo vo formulári po kliknutí "Podať žiadosť"
-- [ ] B2 – Potvrdzovacie okno pred podaním ("Naozaj chcete podať žiadosť?")
+- [x] B1 – Zobraziť chyby XSD validácie priamo vo formulári po kliknutí "Podať žiadosť"
+- [x] B2 – Potvrdzovacie okno pred podaním ("Naozaj chcete podať žiadosť?")
 - [ ] B3 – Dokončenie PDF pre formulár Uplatniteľná legislatíva
-- [ ] B4 – Testovanie na reálnych podaniach (overenie akceptácie SP)
+- [ ] B4 – Splnomocnenie aj pre formulár Uplatniteľná legislatíva
+- [ ] B5 – Uloženie podpisu (signatureBase64) do DB (pole v modeli DocumentBundle)
+- [ ] B6 – Testovanie na reálnych podaniach (overenie akceptácie SP)
 
 ---
 
@@ -69,10 +77,11 @@ SZČO                          Správca (ty)
 > Cieľ: Admin rozhranie je prehľadné a použiteľné
 
 - [ ] C1 – Detail žiadosti: čitateľný prehľad dát (nie surový JSON)
-- [ ] C2 – Filtrovanie podľa dátumu (od/do)
-- [ ] C3 – Vyhľadávanie podľa IČO alebo mena
-- [ ] C4 – Počet nových žiadostí v hlavičke (badge)
-- [ ] C5 – Možnosť zmazať žiadosť (s potvrdením)
+- [ ] C2 – Zobraziť/stiahnuť podpis splnomocnenia v detaile žiadosti
+- [ ] C3 – Filtrovanie podľa dátumu (od/do)
+- [ ] C4 – Vyhľadávanie podľa IČO alebo mena
+- [ ] C5 – Počet nových žiadostí v hlavičke (badge)
+- [ ] C6 – Možnosť zmazať žiadosť (s potvrdením)
 
 ---
 
@@ -117,4 +126,4 @@ Blok A → Blok B → Blok C → Blok D → Blok E → Blok F
 
 ---
 
-*Naposledy aktualizované: 2026-04-24*
+*Naposledy aktualizované: 2026-04-28*
