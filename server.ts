@@ -109,12 +109,15 @@ async function fetchWithRetry(
 // ── Lokálna RPO cache (rpo_fo tabuľka) ──────────────────────────────────────
 async function lookupLocalCache(ico: string): Promise<any | null> {
   if (!localRpoPool) return null;
+  const t0 = Date.now();
   try {
     const result = await localRpoPool.query(
       "SELECT data FROM rpo_fo WHERE ico = $1 AND is_inactive = false AND data IS NOT NULL LIMIT 1",
       [ico]
     );
-    if (!result.rows.length) return null;
+    const hit = result.rows.length > 0;
+    console.log(`[LOCAL_CACHE] ICO ${ico}: ${hit ? 'HIT' : 'MISS'} za ${Date.now() - t0}ms`);
+    if (!hit) return null;
     return { ...result.rows[0].data, source: "LOCAL_CACHE" };
   } catch (err: any) {
     console.error(`[LOCAL_RPO] Chyba pri hľadaní ICO ${ico}:`, err.message);
