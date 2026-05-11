@@ -70,7 +70,8 @@ async function validateXml(xmlString: string, typ: "vyslanie" | "uplatnitelna"):
 async function fetchWithRetry(
   url: string,
   maxRetries = 4,
-  baseDelayMs = 1000
+  baseDelayMs = 1000,
+  timeoutMs = 15000
 ): Promise<any> {
   let lastError: any;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -80,7 +81,7 @@ async function fetchWithRetry(
           Accept: "application/json",
           "User-Agent": "Mozilla/5.0",
         },
-        timeout: 15000,
+        timeout: timeoutMs,
       });
       return response.data;
     } catch (err) {
@@ -98,6 +99,43 @@ async function fetchWithRetry(
     }
   }
   throw lastError;
+}
+
+// ── RÚZ fallback lookup ──────────────────────────────────────────────────────
+const RUZ_BASE = "https://www.registeruz.sk/cruz-public";
+const RUZ_HEADERS = { Accept: "application/json", "User-Agent": "Mozilla/5.0" };
+
+async function lookupByRuz(ico: string): Promise<any> {
+  const listRes = await axios.get(
+    `${RUZ_BASE}/api/uctovne-jednotky?zmenene-od=2000-01-01&ico=${ico}`,
+    { headers: RUZ_HEADERS, timeout: 8000 }
+  );
+  const ids: number[] = listRes.data?.id ?? [];
+  if (!ids.length) throw new Error(`Firma s IČO ${ico} nebola nájdená v RÚZ`);
+
+  const detailRes = await axios.get(
+    `${RUZ_BASE}/api/uctovna-jednotka?id=${ids[0]}`,
+    { headers: RUZ_HEADERS, timeout: 8000 }
+  );
+  const d = detailRes.data;
+  if (!d) throw new Error("RÚZ vrátilo prázdnu odpoveď");
+
+  // Transform to RPO-compatible structure so the frontend hook works unchanged
+  return {
+    source: "RUZ",
+    fullNames: [{ value: d.nazovUJ || "" }],
+    establishment: d.datumZalozenia || "",
+    addresses: d.ulica || d.mesto ? [{
+      street: d.ulica || "",
+      municipality: { value: d.mesto || "" },
+      postalCodes: d.psc ? [String(d.psc)] : [],
+      country: { value: "Slovenská republika" },
+    }] : [],
+    activities: [],
+    statutoryBodies: [],
+    dic: d.dic || "",
+    datumZrusenia: d.datumZrusenia || "",
+  };
 }
 
 async function startServer() {
@@ -133,34 +171,50 @@ async function startServer() {
   // ── API routes ───────────────────────────────────────────────────────────
 
   app.get("/api/rpo/entity", async (req, res) => {
+    const { ico } = req.query;
+    if (!ico) return res.status(400).json({ error: "Missing ICO" });
+
+    let rpoError: any = null;
+
+    // ── Pokus 1: RPO ────────────────────────────────────────────────────────
     try {
-      const { ico } = req.query;
-      if (!ico) return res.status(400).json({ error: "Missing ICO" });
-
       const searchUrl = `https://api.statistics.sk/rpo/v1/search?identifier=${ico}`;
-      console.log(`[Server] RPO Combined: Searching for ICO ${ico}`);
-      const searchData = await fetchWithRetry(searchUrl);
+      console.log(`[Server] RPO: Searching for ICO ${ico}`);
+      const searchData = await fetchWithRetry(searchUrl, 4, 1000, 8000);
 
-      if (!searchData.results?.length)
-        return res.status(404).json({ error: "Organization not found" });
+      if (!searchData.results?.length) throw new Error("Organization not found in RPO");
 
       const entityId = searchData.results[0].id;
-      if (!entityId)
-        return res.status(404).json({ error: "Entity ID not found" });
+      if (!entityId) throw new Error("Entity ID not found in RPO");
 
       const detailUrl = `https://api.statistics.sk/rpo/v1/entity/${entityId}?showHistoricalData=true&showOrganizationUnits=true`;
-      console.log(`[Server] RPO Combined: Fetching detail for ID ${entityId}`);
-      const detailData = await fetchWithRetry(detailUrl);
-      res.json(detailData);
-    } catch (error: any) {
-      const status = error.response?.status;
-      const message = status === 429
-        ? "RPO API dočasne obmedzuje požiadavky (rate limit). Skúste za chvíľu."
-        : "Failed to fetch entity from RPO";
-      console.error("[Server] RPO Combined Error:", error.message);
-      res.status(status || 500).json({
-        error: message,
-        details: error.response?.data || error.message,
+      console.log(`[Server] RPO: Fetching detail for ID ${entityId}`);
+      const detailData = await fetchWithRetry(detailUrl, 4, 1000, 8000);
+      return res.json({ ...detailData, source: "RPO" });
+    } catch (err: any) {
+      rpoError = err;
+      const status = err.response?.status;
+      if (status === 429) {
+        console.warn(`[Server] RPO rate limit (429) pre ICO ${ico}, skúšam RÚZ fallback...`);
+      } else {
+        console.warn(`[Server] RPO zlyhalo (${status || err.code || "network"}), skúšam RÚZ fallback...`);
+      }
+    }
+
+    // ── Pokus 2: RÚZ fallback ───────────────────────────────────────────────
+    try {
+      console.log(`[Server] RÚZ: Searching for ICO ${ico}`);
+      const ruzData = await lookupByRuz(ico as string);
+      console.log(`[Server] RÚZ: Fallback úspešný pre ICO ${ico}`);
+      return res.json(ruzData);
+    } catch (ruzErr: any) {
+      console.error(`[Server] Oba registre zlyhali pre ICO ${ico}. RPO: ${rpoError?.message} | RÚZ: ${ruzErr.message}`);
+      return res.status(502).json({
+        error: "Oba registre sú nedostupné",
+        details: {
+          rpo: rpoError?.message || rpoError?.response?.data,
+          ruz: ruzErr.message,
+        },
       });
     }
   });
