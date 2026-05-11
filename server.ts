@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import axios, { AxiosError } from "axios";
+import axios, { type AxiosError } from "axios";
 import { spawn } from "child_process";
 import { writeFile, unlink } from "fs/promises";
 import path from "path";
@@ -19,6 +19,11 @@ const prisma: PrismaClient | null = process.env.DATABASE_URL
   ? new PrismaClient({ adapter: new PrismaPg(new Pool({ connectionString: process.env.DATABASE_URL })) })
   : null;
 if (!prisma) console.warn("[DB] DATABASE_URL not set – running without database");
+
+const localRpoPool = process.env.LOCAL_RPO_DB_URL
+  ? new Pool({ connectionString: process.env.LOCAL_RPO_DB_URL })
+  : null;
+if (localRpoPool) console.log("[LOCAL_RPO] Pool pripravený");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -101,6 +106,22 @@ async function fetchWithRetry(
   throw lastError;
 }
 
+// ── Lokálna RPO cache (rpo_fo tabuľka) ──────────────────────────────────────
+async function lookupLocalCache(ico: string): Promise<any | null> {
+  if (!localRpoPool) return null;
+  try {
+    const result = await localRpoPool.query(
+      "SELECT data FROM rpo_fo WHERE ico = $1 AND is_inactive = false AND data IS NOT NULL LIMIT 1",
+      [ico]
+    );
+    if (!result.rows.length) return null;
+    return { ...result.rows[0].data, source: "LOCAL_CACHE" };
+  } catch (err: any) {
+    console.error(`[LOCAL_RPO] Chyba pri hľadaní ICO ${ico}:`, err.message);
+    return null;
+  }
+}
+
 // ── RÚZ fallback lookup ──────────────────────────────────────────────────────
 const RUZ_BASE = "https://www.registeruz.sk/cruz-public";
 const RUZ_HEADERS = { Accept: "application/json", "User-Agent": "Mozilla/5.0" };
@@ -125,7 +146,7 @@ async function lookupByRuz(ico: string): Promise<any> {
     source: "RUZ",
     fullNames: [{ value: d.nazovUJ || "" }],
     establishment: d.datumZalozenia || "",
-    addresses: d.ulica || d.mesto ? [{
+    addresses: (d.ulica || d.mesto) ? [{
       street: d.ulica || "",
       municipality: { value: d.mesto || "" },
       postalCodes: d.psc ? [String(d.psc)] : [],
@@ -174,9 +195,17 @@ async function startServer() {
     const { ico } = req.query;
     if (!ico) return res.status(400).json({ error: "Missing ICO" });
 
+    // ── Krok 0: lokálna cache ────────────────────────────────────────────────
+    const cached = await lookupLocalCache(ico as string);
+    if (cached) {
+      console.log(`[Server] LOCAL_CACHE: Hit pre ICO ${ico}`);
+      return res.json(cached);
+    }
+    console.log(`[Server] LOCAL_CACHE: Miss pre ICO ${ico}, skúšam RPO API...`);
+
     let rpoError: any = null;
 
-    // ── Pokus 1: RPO ────────────────────────────────────────────────────────
+    // ── Krok 1: RPO ─────────────────────────────────────────────────────────
     try {
       const searchUrl = `https://api.statistics.sk/rpo/v1/search?identifier=${ico}`;
       console.log(`[Server] RPO: Searching for ICO ${ico}`);
@@ -304,7 +333,7 @@ async function startServer() {
               attachmentType: attachmentMeta[i]?.attachmentType || "ine",
               mimeType: file.mimetype,
               sizeBytes: file.size,
-              data: file.buffer,
+              data: Buffer.from(file.buffer),
             })),
           },
         },
