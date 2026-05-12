@@ -47,6 +47,8 @@ export interface FormDataState {
   identifikacneCisloVSocialnejPoistovni: string;
   cinnostSZCONaSlovensku: string;
   skNace: string;
+  dic?: string;
+  icdph?: string;
   dostupneCinnosti?: string[];
 
   zadatAdresuMiestaPodnikania: boolean;

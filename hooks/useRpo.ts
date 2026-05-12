@@ -29,11 +29,21 @@ interface RpoStatutoryBody {
 }
 
 interface RpoEntity {
+    source?: string;
     fullNames?: { value: string }[];
     establishment?: string;
     activities?: RpoActivity[];
     addresses?: RpoAddress[];
     statutoryBodies?: RpoStatutoryBody[];
+    dic?: string;
+    icdph?: string;
+}
+
+interface RpoDetail {
+    source: string;
+    activities: RpoActivity[];
+    statutoryBodies: RpoStatutoryBody[];
+    statisticalCodes: any;
 }
 
 const emptyAddress: Address = {
@@ -56,10 +66,40 @@ function mapRpoAddress(addr: RpoAddress): Address {
     };
 }
 
+function applyActivities(activities: RpoActivity[], prev: FormDataState): Partial<FormDataState> {
+    const active = activities
+        .filter(a => a.economicActivityDescription && a.validFrom && !a.validTo)
+        .map(a => a.economicActivityDescription);
+    const patch: Partial<FormDataState> = { dostupneCinnosti: active };
+    if (active.length === 1 && !prev.cinnostSZCONaSlovensku) {
+        patch.cinnostSZCONaSlovensku = active[0];
+    }
+    return patch;
+}
+
+function applyStatutoryBody(statutory: RpoStatutoryBody, prev: FormDataState): Partial<FormDataState> {
+    const patch: Partial<FormDataState> = {};
+    if (statutory.personName) {
+        const pn = statutory.personName;
+        patch.meno = pn.givenNames?.[0] || prev.meno;
+        patch.priezvisko = pn.familyNames?.[0] || prev.priezvisko;
+        patch.rodnePriezvisko = pn.givenFamilyNames?.[0] || prev.rodnePriezvisko;
+        if (statutory.address) {
+            const addr = mapRpoAddress(statutory.address);
+            patch.adresaPobytu = addr;
+            const cleanPsc = addr.psc.replace(/\s/g, '');
+            const branchCode = BRANCH_OFFICE_BY_PSC[cleanPsc];
+            if (branchCode) patch.pobocka = branchCode;
+        }
+    }
+    return patch;
+}
+
 export const useRpo = (ico: string, setFormData: React.Dispatch<React.SetStateAction<FormDataState>>) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const [loadingDetail, setLoadingDetail] = useState(false);
 
     useEffect(() => {
         const cleanIco = ico.trim().replace(/\s/g, '');
@@ -114,7 +154,7 @@ export const useRpo = (ico: string, setFormData: React.Dispatch<React.SetStateAc
                     }
 
                     const entity: RpoEntity = await response.json();
-                    console.log('[RPO] Entity data:', entity);
+                    console.log('[RPO] Entity data (source:', entity.source, ')');
 
                     const obchodneMeno = entity.fullNames?.[0]?.value || '';
                     const datumZaciatkuCinnosti = entity.establishment || '';
@@ -132,26 +172,21 @@ export const useRpo = (ico: string, setFormData: React.Dispatch<React.SetStateAc
                         newState.obchodneMeno = obchodneMeno;
                         newState.datumZaciatkuCinnosti = datumZaciatkuCinnosti;
                         newState.dostupneCinnosti = activeActivities;
+                        newState.adresaMiestaPodnikania = adresaMiestaPodnikania;
+                        newState.zadatAdresuMiestaPodnikania = !!entity.addresses?.[0];
+
+                        if (entity.dic) newState.dic = entity.dic;
+                        if (entity.icdph) newState.icdph = entity.icdph;
 
                         if (activeActivities.length === 1 && !newState.cinnostSZCONaSlovensku) {
                             newState.cinnostSZCONaSlovensku = activeActivities[0];
                         }
 
-                        newState.adresaMiestaPodnikania = adresaMiestaPodnikania;
-                        newState.zadatAdresuMiestaPodnikania = !!entity.addresses?.[0];
-
-                        const statutory = entity.statutoryBodies?.[0];
-                        if (statutory?.personName) {
-                            const pn = statutory.personName;
-                            newState.meno = pn.givenNames?.[0] || newState.meno;
-                            newState.priezvisko = pn.familyNames?.[0] || newState.priezvisko;
-                            newState.rodnePriezvisko = pn.givenFamilyNames?.[0] || newState.rodnePriezvisko;
-
-                            if (statutory.address) {
-                                newState.adresaPobytu = mapRpoAddress(statutory.address);
-                                const cleanPsc = newState.adresaPobytu.psc.replace(/\s/g, '');
-                                const branchCode = BRANCH_OFFICE_BY_PSC[cleanPsc];
-                                if (branchCode) newState.pobocka = branchCode;
+                        // For non-ORSF sources, statutory body data is already in the entity
+                        if (entity.source !== 'ORSF') {
+                            const statutory = entity.statutoryBodies?.[0];
+                            if (statutory) {
+                                Object.assign(newState, applyStatutoryBody(statutory, prev));
                             }
                         }
 
@@ -161,6 +196,41 @@ export const useRpo = (ico: string, setFormData: React.Dispatch<React.SetStateAc
                     setSuccess(true);
                     setTimeout(() => setSuccess(false), 2000);
                     lastError = null;
+
+                    // Progressive: if data came from ORSF (no activities/statutory yet),
+                    // fetch RPO detail in background for activities and statutory bodies
+                    if (entity.source === 'ORSF') {
+                        setLoadingDetail(true);
+                        const detailTimeout = setTimeout(() => setLoadingDetail(false), 10000);
+
+                        fetch(`/api/rpo/detail-async?ico=${cleanIco}`)
+                            .then(r => r.json())
+                            .then((detail: RpoDetail) => {
+                                clearTimeout(detailTimeout);
+                                setLoadingDetail(false);
+                                if (detail.source === 'RPO_FAILED') return;
+
+                                setFormData(prev => {
+                                    const newState = { ...prev };
+
+                                    if (detail.activities?.length) {
+                                        Object.assign(newState, applyActivities(detail.activities, prev));
+                                    }
+
+                                    if (detail.statutoryBodies?.length) {
+                                        Object.assign(newState, applyStatutoryBody(detail.statutoryBodies[0], prev));
+                                    }
+
+                                    return newState;
+                                });
+                            })
+                            .catch(err => {
+                                clearTimeout(detailTimeout);
+                                setLoadingDetail(false);
+                                console.warn('[RPO Detail] Background fetch failed:', err.message);
+                            });
+                    }
+
                     break; // success — exit retry loop
 
                 } catch (err) {
@@ -171,10 +241,12 @@ export const useRpo = (ico: string, setFormData: React.Dispatch<React.SetStateAc
                 }
             }
 
+            setLoading(false);
+
         }, 1000); // 1s debounce (increased from 600ms to reduce rate limit hits)
 
         return () => clearTimeout(handler);
     }, [ico, setFormData]);
 
-    return { loading, error, success };
+    return { loading, error, success, loadingDetail };
 };
