@@ -23,7 +23,7 @@ const initialFormData: FormDataState = {
   email: '', telefon: '', pobytovyPreukaz: false,
   zadatAdresuPrechodnehoPobytu: false, adresaPrechodnehoPobytu: { ...emptyAddress },
   zadatKorespodencnuAdresu: false, korespodencnaAdresa: { ...emptyAddress },
-  ico: '', obchodneMeno: '', datumZaciatkuCinnosti: '', identifikacneCisloVSocialnejPoistovni: '', cinnostSZCONaSlovensku: '', skNace: 'F',
+  ico: '', obchodneMeno: '', datumZaciatkuCinnosti: '', identifikacneCisloVSocialnejPoistovni: '', cinnostSZCONaSlovensku: '', skNace: 'F', dic: '', icdph: '',
   zadatAdresuMiestaPodnikania: false, adresaMiestaPodnikania: { ...emptyAddress },
   prerusenieZivnosti: false, prerusenieOd: '', prerusenieDo: '',
   skutocnaCinnostOd: '', skutocnaCinnostDo: '', skutocnaCinnostHodinMesacne: '',
@@ -71,7 +71,7 @@ const App: React.FC = () => {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const { loading: rpoLoading, error: rpoError, success: icoFetchSuccess } = useRpo(formData.ico, setFormData);
+  const { loading: rpoLoading, error: rpoError, success: icoFetchSuccess, loadingDetail: rpoLoadingDetail } = useRpo(formData.ico, setFormData);
 
   const dateError = React.useMemo(() => {
     if (formData.datumZaciatkuVyslania && formData.datumKoncaVyslania) {
@@ -463,6 +463,13 @@ const App: React.FC = () => {
           <FormSection title="2. Podnikanie na Slovensku">
             <InputField label="IČO" id="ico" name="ico" inputMode="numeric" value={formData.ico} onChange={handleChange} required />
             <InputField label="Obchodné meno" id="obchodneMeno" name="obchodneMeno" value={formData.obchodneMeno} onChange={handleChange} required gridSpan="md:col-span-2" />
+
+            {rpoLoadingDetail && (
+              <div className="md:col-span-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-sm">
+                <SpinnerIcon />
+                <span>Načítavam doplnkové údaje (činnosti, štatutár)...</span>
+              </div>
+            )}
 
             <div className="md:col-span-3 mt-4 p-4 border border-gray-100 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-slate-800">
               <h3 className="text-lg font-medium mb-4">Adresa miesta podnikania</h3>

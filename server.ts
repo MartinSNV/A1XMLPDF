@@ -125,6 +125,32 @@ async function lookupLocalCache(ico: string): Promise<any | null> {
   }
 }
 
+// ── ORSF API lookup ──────────────────────────────────────────────────────────
+async function lookupByOrsf(ico: string): Promise<any> {
+  const t0 = Date.now();
+  const res = await axios.get(`https://api.orsf.sk/v1/companies/${ico}`, {
+    headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
+    timeout: 5000,
+  });
+  console.log(`[ORSF] ICO ${ico}: Hit za ${Date.now() - t0}ms`);
+  const d = res.data;
+  return {
+    source: "ORSF",
+    fullNames: [{ value: d.name || "" }],
+    establishment: d.establishedOn || "",
+    addresses: (d.street || d.city) ? [{
+      street: d.street || "",
+      municipality: { value: d.city || "" },
+      postalCodes: d.psc ? [String(d.psc)] : [],
+      country: { value: "Slovenská republika" },
+    }] : [],
+    dic: d.dic || "",
+    icdph: d.icdph || "",
+    activities: [],
+    statutoryBodies: [],
+  };
+}
+
 // ── RÚZ fallback lookup ──────────────────────────────────────────────────────
 const RUZ_BASE = "https://www.registeruz.sk/cruz-public";
 const RUZ_HEADERS = { Accept: "application/json", "User-Agent": "Mozilla/5.0" };
@@ -204,11 +230,19 @@ async function startServer() {
       console.log(`[Server] LOCAL_CACHE: Hit pre ICO ${ico}`);
       return res.json(cached);
     }
-    console.log(`[Server] LOCAL_CACHE: Miss pre ICO ${ico}, skúšam RPO API...`);
+    console.log(`[Server] LOCAL_CACHE: Miss pre ICO ${ico}, skúšam ORSF API...`);
+
+    // ── Krok 1: ORSF API ─────────────────────────────────────────────────────
+    try {
+      const orsfData = await lookupByOrsf(ico as string);
+      return res.json(orsfData);
+    } catch (orsfErr: any) {
+      console.warn(`[Server] ORSF zlyhalo (${orsfErr.response?.status || orsfErr.code || "network"}), skúšam RPO API...`);
+    }
 
     let rpoError: any = null;
 
-    // ── Krok 1: RPO ─────────────────────────────────────────────────────────
+    // ── Krok 2: RPO ─────────────────────────────────────────────────────────
     try {
       const searchUrl = `https://api.statistics.sk/rpo/v1/search?identifier=${ico}`;
       console.log(`[Server] RPO: Searching for ICO ${ico}`);
@@ -233,7 +267,7 @@ async function startServer() {
       }
     }
 
-    // ── Pokus 2: RÚZ fallback ───────────────────────────────────────────────
+    // ── Krok 3: RÚZ fallback ───────────────────────────────────────────────
     try {
       console.log(`[Server] RÚZ: Searching for ICO ${ico}`);
       const ruzData = await lookupByRuz(ico as string);
@@ -280,6 +314,34 @@ async function startServer() {
         error: "Failed to fetch entity detail",
         details: error.response?.data || error.message,
       });
+    }
+  });
+
+  app.get("/api/rpo/detail-async", async (req, res) => {
+    const { ico } = req.query;
+    if (!ico) return res.status(400).json({ error: "Missing ICO" });
+    const t0 = Date.now();
+    try {
+      const searchUrl = `https://api.statistics.sk/rpo/v1/search?identifier=${ico}`;
+      const searchData = await fetchWithRetry(searchUrl, 2, 1000, 8000);
+      if (!searchData.results?.length) throw new Error("Organization not found in RPO");
+
+      const entityId = searchData.results[0].id;
+      if (!entityId) throw new Error("Entity ID not found in RPO");
+
+      const detailUrl = `https://api.statistics.sk/rpo/v1/entity/${entityId}?showHistoricalData=true&showOrganizationUnits=true`;
+      const detailData = await fetchWithRetry(detailUrl, 2, 1000, 8000);
+
+      console.log(`[RPO Detail] ICO ${ico}: ${Date.now() - t0}ms`);
+      return res.json({
+        activities: detailData.activities || [],
+        statutoryBodies: detailData.statutoryBodies || [],
+        statisticalCodes: detailData.statisticalCodes || null,
+        source: "RPO",
+      });
+    } catch (err: any) {
+      console.warn(`[RPO Detail] ICO ${ico}: FAILED po ${Date.now() - t0}ms — ${err.message}`);
+      return res.json({ activities: [], statutoryBodies: [], statisticalCodes: null, source: "RPO_FAILED" });
     }
   });
 
