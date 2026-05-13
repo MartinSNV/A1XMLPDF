@@ -20,10 +20,15 @@ const prisma: PrismaClient | null = process.env.DATABASE_URL
   : null;
 if (!prisma) console.warn("[DB] DATABASE_URL not set – running without database");
 
-const localRpoPool = process.env.LOCAL_RPO_DB_URL
-  ? new Pool({ connectionString: process.env.LOCAL_RPO_DB_URL })
+const rpoPool = process.env.RPO_DATABASE_URL
+  ? new Pool({
+      connectionString: process.env.RPO_DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 5,
+      idleTimeoutMillis: 30000,
+    })
   : null;
-if (localRpoPool) console.log("[LOCAL_RPO] Pool pripravený");
+if (rpoPool) console.log("[RPO_CACHE] CockroachDB pool pripravený");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -108,19 +113,19 @@ async function fetchWithRetry(
 
 // ── Lokálna RPO cache (rpo_fo tabuľka) ──────────────────────────────────────
 async function lookupLocalCache(ico: string): Promise<any | null> {
-  if (!localRpoPool) return null;
+  if (!rpoPool) return null;
   const t0 = Date.now();
   try {
-    const result = await localRpoPool.query(
+    const result = await rpoPool.query(
       "SELECT data FROM rpo_fo WHERE ico = $1 AND is_inactive = false AND data IS NOT NULL LIMIT 1",
       [ico]
     );
     const hit = result.rows.length > 0;
-    console.log(`[LOCAL_CACHE] ICO ${ico}: ${hit ? 'HIT' : 'MISS'} za ${Date.now() - t0}ms`);
+    console.log(`[RPO_CACHE] ICO ${ico}: ${hit ? 'HIT' : 'MISS'} za ${Date.now() - t0}ms`);
     if (!hit) return null;
     return { ...result.rows[0].data, source: "LOCAL_CACHE" };
   } catch (err: any) {
-    console.error(`[LOCAL_RPO] Chyba pri hľadaní ICO ${ico}:`, err.message);
+    console.error(`[RPO_CACHE] Chyba pri hľadaní ICO ${ico}:`, err.message);
     return null;
   }
 }

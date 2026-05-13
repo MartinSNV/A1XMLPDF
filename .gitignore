@@ -26,3 +26,8 @@ Thumbs.db
 /tmp/*.json
 
 /generated/prisma
+rpo_fo.csv
+rpo_fo.sql
+rpo2.sql.gz
+rpo2.sql
+__pycache__/
