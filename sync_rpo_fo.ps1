@@ -5,7 +5,7 @@
 # =============================================================
 
 # --- KONFIGURÁCIA ---
-$COCKROACH_URL = "postgresql://matojurik_1_gmail_co:BU-r7qmghtMwAI3SIxEMsQ@meaty-yak-26043.j77.aws-eu-central-1.cockroachlabs.cloud:26257/defaultdb?sslmode=require"
+$COCKROACH_URL = $env:RPO_DATABASE_URL
 $PSQL = "C:\Program Files\PostgreSQL\18\bin\psql.exe"
 $WORK_DIR = "D:\Projekty\CLAUDE\A1XMLPDF"
 $STATE_FILE = "$WORK_DIR\rpo_sync_state.json"
