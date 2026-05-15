@@ -3,12 +3,15 @@
 sync_rpo_fo.py
 Synchronizácia RPO FO databázy z ekosystem.slovensko.digital
 Beží v GitHub Actions každú nedeľu
+Optimalizované: batch upserty (100 záznamov naraz)
 """
 
 import json
 import os
 import time
+import re
 import subprocess
+import tempfile
 import requests
 from datetime import datetime, timezone, timedelta
 
@@ -16,7 +19,8 @@ from datetime import datetime, timezone, timedelta
 API_BASE = "https://datahub.ekosystem.slovensko.digital/api/data/rpo2/organizations/sync"
 STATE_FILE = "rpo_sync_state.json"
 COCKROACH_URL = os.environ["COCKROACH_URL"]
-RATE_LIMIT = 50  # requestov za minútu
+RATE_LIMIT = 50      # requestov za minútu
+BATCH_SIZE = 100     # počet upsertov naraz
 
 def log(msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -26,7 +30,6 @@ def load_state():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE) as f:
             return json.load(f)
-    # Prvý beh - syncni posledných 7 dní
     since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     return {"last_sync_at": since}
 
@@ -38,8 +41,7 @@ def is_fyzicka_osoba(org):
     data = org.get("data", {})
     if not data:
         return False
-    legal_forms = data.get("legalForms", [])
-    for lf in legal_forms:
+    for lf in data.get("legalForms", []):
         code = lf.get("value", {}).get("code", "")
         if code and code.startswith("1") and len(code) == 3:
             return True
@@ -53,27 +55,42 @@ def extract_ico(org):
             return value
     return None
 
-def upsert_to_cockroach(ico, legal_form_code, is_fo, is_inactive, data_json):
-    # Escapuj single quotes
-    data_escaped = data_json.replace("'", "''")
-    is_fo_str = "true" if is_fo else "false"
-    is_inactive_str = "true" if is_inactive else "false"
-    lfc = (legal_form_code or "").replace("'", "''")
+def batch_upsert(records):
+    """Upsertni viac záznamov naraz v jednom SQL príkaze"""
+    if not records:
+        return
+
+    values = []
+    for ico, legal_form_code, is_fo, is_inactive, data_json in records:
+        data_escaped = data_json.replace("'", "''")
+        lfc = (legal_form_code or "").replace("'", "''")
+        is_fo_str = "true" if is_fo else "false"
+        is_inactive_str = "true" if is_inactive else "false"
+        values.append(
+            f"('{ico}', '{lfc}', {is_fo_str}, {is_inactive_str}, '{data_escaped}'::jsonb)"
+        )
 
     sql = f"""INSERT INTO defaultdb.rpo_fo (ico, legal_form_code, is_fyzicka_osoba, is_inactive, data)
-VALUES ('{ico}', '{lfc}', {is_fo_str}, {is_inactive_str}, '{data_escaped}'::jsonb)
+VALUES {', '.join(values)}
 ON CONFLICT ON CONSTRAINT rpo_fo_ico_unique DO UPDATE SET
   legal_form_code = EXCLUDED.legal_form_code,
   is_fyzicka_osoba = EXCLUDED.is_fyzicka_osoba,
   is_inactive = EXCLUDED.is_inactive,
   data = EXCLUDED.data;"""
 
-    result = subprocess.run(
-        ["psql", COCKROACH_URL, "-c", sql],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        log(f"CHYBA upsert ICO {ico}: {result.stderr[:200]}")
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False, encoding='utf-8') as f:
+        f.write(sql)
+        tmp_path = f.name
+
+    try:
+        result = subprocess.run(
+            ["psql", COCKROACH_URL, "-f", tmp_path],
+            capture_output=True, text=True, timeout=60
+        )
+        if result.returncode != 0:
+            log(f"CHYBA batch upsert: {result.stderr[:300]}")
+    finally:
+        os.unlink(tmp_path)
 
 def main():
     log("=== Začiatok RPO FO synchronizácie ===")
@@ -82,10 +99,13 @@ def main():
     since = state["last_sync_at"]
     log(f"Synchronizujem od: {since}")
 
-    next_url = f"{API_BASE}?since={requests.utils.quote(since)}"
+    since_encoded = requests.utils.quote(since)
+    next_url = f"{API_BASE}?since={since_encoded}"
+
     total_processed = 0
     total_upserted = 0
     new_since = since
+    batch = []
 
     request_count = 0
     minute_start = time.time()
@@ -113,8 +133,7 @@ def main():
         # Získaj ďalšiu stránku z Link hlavičky
         next_url = None
         link_header = response.headers.get("Link", "")
-        if 'rel="next"' in link_header or "rel='next'" in link_header:
-            import re
+        if link_header:
             match = re.search(r'<([^>]+)>;\s*rel=["\']next["\']', link_header)
             if match:
                 next_url = match.group(1)
@@ -145,13 +164,21 @@ def main():
             is_inactive = bool(data.get("termination"))
             data_json = json.dumps(data, ensure_ascii=False)
 
-            upsert_to_cockroach(ico, legal_form_code, True, is_inactive, data_json)
-            total_upserted += 1
+            batch.append((ico, legal_form_code, True, is_inactive, data_json))
 
-            if total_upserted % 100 == 0:
+            if len(batch) >= BATCH_SIZE:
+                batch_upsert(batch)
+                total_upserted += len(batch)
                 log(f"Spracovaných: {total_processed}, upsertnutých FO: {total_upserted}")
+                batch = []
 
         log(f"Stránka hotová. Celkom: {total_processed}, FO: {total_upserted}")
+
+    # Upsertni zvyšok
+    if batch:
+        batch_upsert(batch)
+        total_upserted += len(batch)
+        log(f"Posledný batch: {len(batch)} záznamov")
 
     save_state(new_since)
     log(f"Nový sync timestamp: {new_since}")

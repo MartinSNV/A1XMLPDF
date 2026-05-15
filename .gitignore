@@ -29,5 +29,6 @@ Thumbs.db
 rpo_fo.csv
 rpo_fo.sql
 rpo2.sql.gz
+sync_rpo_fo.ps1
 rpo2.sql
 __pycache__/
