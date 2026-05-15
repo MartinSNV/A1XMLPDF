@@ -89,6 +89,7 @@ const App: React.FC = () => {
     }
   }, [icoFetchSuccess, step]);
 
+
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const target = e.target as HTMLInputElement;
     const { name, value, type } = target;
@@ -149,7 +150,7 @@ const App: React.FC = () => {
     } finally {
       setSubmitLoading(false);
     }
-  }, [formData, attachments]);
+  }, [formData, attachments, signatureBase64]);
 
   const handleDownloadPdf = useCallback(async () => {
     setPdfLoading(true);

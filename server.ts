@@ -389,6 +389,7 @@ async function startServer() {
         attachmentMeta = files.map(() => ({ attachmentType: "ine" }));
       }
 
+      console.log('[DEBUG] signatureBase64 present:', !!req.body.signatureBase64, 'length:', req.body.signatureBase64?.length);
       const bundle = await prisma.documentBundle.create({
         data: {
           formType: formType as any,
@@ -397,6 +398,7 @@ async function startServer() {
           companyName: formData.obchodneMeno || "",
           applicantName: `${formData.meno || ""} ${formData.priezvisko || ""}`.trim(),
           formData: formData,
+          signatureBase64: req.body.signatureBase64 || null,
           attachments: {
             create: files.map((file, i) => ({
               fileName: file.originalname,
