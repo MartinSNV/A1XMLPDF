@@ -129,20 +129,6 @@ const App: React.FC = () => {
     setSubmitError(null);
     setSubmitSuccess(null);
     try {
-      // B1 — XSD validácia pred odoslaním
-      const xml = generateA1XmlString(formData);
-      const validateRes = await fetch('/api/validate-xml', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ xml, typ: 'vyslanie' }),
-      });
-      const validateData = await validateRes.json();
-      if (!validateData.valid) {
-        setSubmitError(`XML nie je platné voči schéme SP:\n${validateData.errors.slice(0, 3).join('\n')}`);
-        setSubmitLoading(false);
-        return;
-      }
-
       const fd = new FormData();
       fd.append('formType', 'PD_A1');
       fd.append('formData', JSON.stringify(formData));

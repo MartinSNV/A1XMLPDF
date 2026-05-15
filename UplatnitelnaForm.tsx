@@ -120,24 +120,6 @@ const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData, onReset, onR
 
     setSubmitError(null);
 
-    // B1 — XSD validácia pred odoslaním
-    try {
-      const xml = generateUplatnitelnaXmlString(formData);
-      const validateRes = await fetch('/api/validate-xml', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ xml, typ: 'uplatnitelna' }),
-      });
-      const validateData = await validateRes.json();
-      if (!validateData.valid) {
-        setSubmitError(`XML nie je platné voči schéme SP:\n${validateData.errors.slice(0, 3).join('\n')}`);
-        return;
-      }
-    } catch {
-      setSubmitError('Chyba pri validácii XML. Skúste znova.');
-      return;
-    }
-
     // B4 — Presmerovanie na splnomocnenie
     onRequestSignature(attachments);
   };

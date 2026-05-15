@@ -68,6 +68,124 @@ const formatDate = (iso: string) =>
 const formatSize = (bytes: number) =>
   bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
+// ── FormDataDetail komponent ─────────────────────────────────────────────────
+
+const FormDataDetail: React.FC<{ formData: any; formType: FormType }> = ({ formData, formType }) => {
+  const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+    <div className="mb-4">
+      <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2 pb-1 border-b border-gray-100">{title}</h4>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+        {children}
+      </div>
+    </div>
+  );
+
+  const Row: React.FC<{ label: string; value?: string | boolean | null }> = ({ label, value }) => {
+    if (value === undefined || value === null || value === '') return null;
+    return (
+      <>
+        <span className="text-xs text-gray-500">{label}</span>
+        <span className="text-xs text-gray-800 font-medium">
+          {typeof value === 'boolean' ? (value ? 'Áno' : 'Nie') : value}
+        </span>
+      </>
+    );
+  };
+
+  const formatAddress = (addr: any): string => {
+    if (!addr) return '';
+    const parts = [
+      addr.ulica,
+      [addr.supisneCislo, addr.orientacneCislo].filter(Boolean).join('/'),
+      addr.obec,
+      addr.psc,
+      addr.stat !== 'Slovenská republika' ? addr.stat : null,
+    ].filter(Boolean);
+    return parts.join(', ');
+  };
+
+  return (
+    <div className="mt-3 text-sm">
+      <Section title="Žiadateľ">
+        <Row label="Meno" value={[formData.titulPred, formData.meno, formData.priezvisko, formData.titulZa].filter(Boolean).join(' ')} />
+        <Row label="Rodné priezvisko" value={formData.rodnePriezvisko} />
+        <Row label="Rodné číslo" value={formData.rodneCislo} />
+        <Row label="Dátum narodenia" value={formData.datumNarodenia} />
+        <Row label="Miesto narodenia" value={formData.miestoNarodenia} />
+        <Row label="Štát narodenia" value={formData.statNarodenia} />
+        <Row label="Štátna príslušnosť" value={formData.statnaPrislusnost} />
+        <Row label="Pohlavie" value={formData.pohlavie} />
+        <Row label="Email" value={formData.email} />
+        <Row label="Telefón" value={formData.telefon} />
+        <Row label="Adresa pobytu" value={formatAddress(formData.adresaPobytu)} />
+        <Row label="Pobytový preukaz" value={formData.pobytovyPreukaz} />
+      </Section>
+
+      <Section title="Podnikanie">
+        <Row label="IČO" value={formData.ico} />
+        <Row label="Obchodné meno" value={formData.obchodneMeno} />
+        <Row label="Adresa podnikania" value={formatAddress(formData.adresaMiestaPodnikania)} />
+        <Row label="Dátum začiatku činnosti" value={formData.datumZaciatkuCinnosti} />
+        <Row label="SK NACE" value={formData.skNace} />
+        <Row label="DIČ" value={formData.dic} />
+        <Row label="IČ DPH" value={formData.icdph} />
+        {formType === 'PD_A1' && (
+          <Row label="Činnosť na Slovensku" value={formData.cinnostSZCONaSlovensku} />
+        )}
+        {formType === 'UPLATNITELNA_LEGISLATIVA' && (
+          <Row label="Predmet SZČO" value={formData.predmetSZCO} />
+        )}
+      </Section>
+
+      {formType === 'PD_A1' && (
+        <Section title="Vyslanie">
+          <Row label="Štát vyslania" value={formData.statVyslania} />
+          <Row label="Dátum začiatku" value={formData.datumZaciatkuVyslania} />
+          <Row label="Dátum konca" value={formData.datumKoncaVyslania} />
+          <Row label="Popis činnosti" value={formData.popisCinnosti} />
+          <Row label="Prijímajúca osoba" value={formData.obchodneMenoPrijimajucejOsoby} />
+          <Row label="IČO prijímajúcej osoby" value={formData.icoPrijimajucejOsoby} />
+          <Row label="Adresa vyslania" value={formatAddress(formData.adresaVyslania)} />
+          <Row label="Prerušenie živnosti" value={formData.prerusenieZivnosti} />
+          {formData.prerusenieZivnosti && (
+            <Row label="Prerušenie od/do" value={`${formData.prerusenieOd} – ${formData.prerusenieDo}`} />
+          )}
+        </Section>
+      )}
+
+      {formType === 'UPLATNITELNA_LEGISLATIVA' && (
+        <Section title="Uplatniteľná legislatíva">
+          <Row label="Obdobie žiadosti od" value={formData.ziadostOd} />
+          <Row label="Obdobie žiadosti do" value={formData.ziadostDo} />
+          <Row label="Opakovaná žiadosť" value={formData.opakovanaZiadost} />
+          <Row label="Krajina sídla" value={formData.krajinaSidla} />
+          <Row label="Činnosť od/do" value={`${formData.cinnostOd} – ${formData.cinnostDo}`} />
+          <Row label="Pracovný čas (hod/mes)" value={formData.pracovnyCas} />
+          <Row label="Typ výkonu" value={formData.typVykonu === 'iba_sr' ? 'Iba v SR' : 'Aj v iných štátoch'} />
+          <Row label="Krajiny výkonu" value={(formData.krajinyVykonu || []).join(', ')} />
+          <Row label="Príjem aktuálny rok" value={formData.prijemAktualnyRok ? `${formData.prijemAktualnyRok} €` : undefined} />
+        </Section>
+      )}
+
+      <Section title="Ostatné">
+        <Row label="Pobočka SP" value={formData.pobocka} />
+        <Row label="Poznámka" value={formData.poznamka || formData.doplnujuceInfo} />
+        <Row label="Cudzinec" value={formData.isForeigner} />
+        {formData.vydanyVInejKrajine && (
+          <Row label="Vydaný v inej krajine" value={`${formData.vydanyVInejKrajineOd} – ${formData.vydanyVInejKrajineDo}, ${formData.vydanyVInejKrajineInstitucia}`} />
+        )}
+      </Section>
+
+      <details className="mt-2">
+        <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">Zobraziť surový JSON</summary>
+        <pre className="mt-2 text-xs bg-gray-50 p-3 rounded-lg overflow-auto max-h-64 text-gray-600">
+          {JSON.stringify(formData, null, 2)}
+        </pre>
+      </details>
+    </div>
+  );
+};
+
 // ── Hlavný Admin komponent ───────────────────────────────────────────────────
 
 const AdminApp: React.FC = () => {
@@ -389,12 +507,10 @@ const AdminApp: React.FC = () => {
               </div>
 
               {/* Dáta formulára */}
-              <details className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <summary className="font-semibold text-gray-800 cursor-pointer">Dáta formulára (JSON)</summary>
-                <pre className="mt-3 text-xs bg-gray-50 p-3 rounded-lg overflow-auto max-h-96 text-gray-700">
-                  {JSON.stringify(selected.formData, null, 2)}
-                </pre>
-              </details>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h3 className="font-semibold text-gray-800 mb-3">Dáta formulára</h3>
+                <FormDataDetail formData={selected.formData} formType={selected.formType} />
+              </div>
 
             </div>
           )}
