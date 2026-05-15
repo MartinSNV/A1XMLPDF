@@ -7,6 +7,7 @@ import CheckboxField from './components/CheckboxField';
 import AddressFields from './components/AddressFields';
 import { COUNTRIES, BRANCH_OFFICES, NACE_CATEGORIES, TITLES_BEFORE, TITLES_AFTER } from './constants';
 import { generateUplatnitelnaXml, generateUplatnitelnaXmlString } from './utilsUplatnitelna';
+import { parseBirthDateFromRc } from './utils';
 import AttachmentUpload, { type AttachmentFile } from './components/AttachmentUpload';
 
 const emptyAddress: Address = { ulica: '', supisneCislo: '', orientacneCislo: '', obec: '', psc: '', stat: 'Slovenská republika' };
@@ -147,12 +148,19 @@ const UplatnitelnaForm: React.FC<Props> = ({ formData, setFormData, onReset, onR
     const checked = target.checked;
 
     setFormData(prev => {
+      let newState: UplatnitelnaFormDataState;
       if (name.includes('.')) {
         const [parent, child] = name.split('.');
         const parentKey = parent as keyof UplatnitelnaFormDataState;
-        return { ...prev, [parentKey]: { ...(prev[parentKey] as object), [child]: value } };
+        newState = { ...prev, [parentKey]: { ...(prev[parentKey] as object), [child]: value } };
+      } else {
+        newState = { ...prev, [name]: type === 'checkbox' ? checked : value };
       }
-      return { ...prev, [name]: type === 'checkbox' ? checked : value };
+      if (name === 'rodneCislo') {
+        const birthDate = parseBirthDateFromRc(value);
+        if (birthDate) newState.datumNarodenia = birthDate;
+      }
+      return newState;
     });
   }, [setFormData]);
 
