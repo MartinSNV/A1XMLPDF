@@ -31,6 +31,7 @@ interface BundleDetail extends Bundle {
   xmlContent: string | null;
   adminNote: string | null;
   attachments: AttachmentMeta[];
+  signatureBase64: string | null;
 }
 
 // ── Pomocné funkcie ──────────────────────────────────────────────────────────
@@ -300,6 +301,12 @@ const AdminApp: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const newCount = bundles.filter(b => b.status === 'NEW').length;
+
+  useEffect(() => {
+    document.title = newCount > 0 ? `(${newCount}) A1 XMLPDF – Admin` : 'A1 XMLPDF – Admin';
+  }, [newCount]);
+
   const filtered = bundles.filter(b =>
     (filterStatus === 'ALL' || b.status === filterStatus) &&
     (filterType === 'ALL' || b.formType === filterType)
@@ -316,7 +323,14 @@ const AdminApp: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-gray-900">A1 XMLPDF – Admin</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-bold text-gray-900">A1 XMLPDF – Admin</h1>
+              {newCount > 0 && (
+                <span className="inline-flex items-center justify-center w-6 h-6 bg-red-500 text-white text-xs font-bold rounded-full">
+                  {newCount > 99 ? '99+' : newCount}
+                </span>
+              )}
+            </div>
           </div>
           <button onClick={fetchBundles} className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -487,6 +501,32 @@ const AdminApp: React.FC = () => {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {/* Podpis splnomocnenia */}
+              {selected.signatureBase64 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <h3 className="font-semibold text-gray-800 mb-4">Podpis splnomocnenia</h3>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden inline-block bg-white">
+                    <img
+                      src={selected.signatureBase64}
+                      alt="Podpis splnomocnenia"
+                      className="max-w-full h-auto max-h-48"
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <a
+                      href={selected.signatureBase64}
+                      download={`podpis-${selected.id.slice(0, 8)}.png`}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Stiahnuť podpis
+                    </a>
+                  </div>
                 </div>
               )}
 
