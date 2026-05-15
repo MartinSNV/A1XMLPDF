@@ -741,10 +741,11 @@ const App: React.FC = () => {
                     )}
                   </button>
                 )}
-                <button type="button" disabled={!!dateError || pdfLoading} onClick={handleDownloadPdf}
+                {/* PDF button temporarily hidden - activate later */}
+                {/* <button type="button" disabled={!!dateError || pdfLoading} onClick={handleDownloadPdf}
                   className={`flex items-center gap-2 font-bold py-4 px-10 rounded-2xl shadow-xl transition-all ${dateError || pdfLoading ? 'bg-gray-400 cursor-not-allowed opacity-50 text-white' : 'bg-red-600 hover:bg-red-700 text-white hover:scale-105 active:scale-95'}`}>
                   {pdfLoading ? (<><SpinnerIcon />Generujem PDF...</>) : (<><PdfIcon />Stiahnuť PDF žiadosť</>)}
-                </button>
+                </button> */}
               </div>
             )}
 
