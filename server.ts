@@ -560,6 +560,16 @@ async function startServer() {
         archive.append(Buffer.from(att.data), { name: att.fileName });
       }
 
+      // Pridaj splnomocnenie ak existuje podpis
+      if (bundle.signatureBase64) {
+        try {
+          const splnomocneniePdf = await generateSplnomocneniePdf(bundle);
+          archive.append(splnomocneniePdf, { name: `splnomocnenie-${bundle.ico}.pdf` });
+        } catch (e: any) {
+          console.warn("[ZIP] Splnomocnenie sa nepodarilo vygenerovať:", e.message);
+        }
+      }
+
       await archive.finalize();
     } catch (err: any) {
       console.error("[ZIP] Error:", err.message);
@@ -584,6 +594,75 @@ async function startServer() {
       res.end(buffer);
     } catch (err: any) {
       res.status(500).json({ error: "Chyba pri sťahovaní prílohy", details: err.message });
+    }
+  });
+
+  // ── Pomocná funkcia: generuje PDF splnomocnenia ─────────────────────────
+  async function generateSplnomocneniePdf(bundle: any): Promise<Buffer> {
+    const formData = bundle.formData as any;
+    const adresa = formData.adresaPobytu || {};
+    const adresaStr = [
+      adresa.ulica,
+      [adresa.supisneCislo, adresa.orientacneCislo].filter(Boolean).join('/'),
+      adresa.psc,
+      adresa.obec,
+    ].filter(Boolean).join(', ');
+
+    const meno = [formData.titulPred, formData.meno, formData.priezvisko, formData.titulZa]
+      .filter(Boolean).join(' ').trim();
+
+    const datum = new Date(bundle.createdAt).toLocaleDateString('sk-SK', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+    });
+
+    const payload = JSON.stringify({
+      meno,
+      obchodneMeno: formData.obchodneMeno || '',
+      ico: bundle.ico,
+      adresaStr,
+      obec: adresa.obec || '',
+      formType: bundle.formType,
+      signatureBase64: bundle.signatureBase64,
+      datum,
+    });
+
+    const scriptPath = path.join(__dirname, "generate_splnomocnenie.py");
+    const python = process.platform === "win32" ? "python" : "python3";
+
+    return new Promise<Buffer>((resolve, reject) => {
+      const proc = spawn(python, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
+      const chunks: Buffer[] = [];
+      let stderr = "";
+      proc.stdout.on("data", (d: Buffer) => chunks.push(d));
+      proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+      proc.on("close", (code) => {
+        if (code === 0) resolve(Buffer.concat(chunks));
+        else reject(new Error(`generate_splnomocnenie.py zlyhalo: ${stderr}`));
+      });
+      proc.on("error", reject);
+      proc.stdin.write(payload);
+      proc.stdin.end();
+    });
+  }
+
+  // Stiahnutie splnomocnenia ako PDF (Python/fpdf2)
+  app.get("/api/bundles/:id/splnomocnenie", async (req, res) => {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Database not configured" });
+      const bundle = await prisma.documentBundle.findUnique({ where: { id: req.params.id } });
+      if (!bundle) return res.status(404).json({ error: "Žiadosť nenájdená" });
+      if (!bundle.signatureBase64) return res.status(400).json({ error: "Žiadosť nemá podpis splnomocnenia" });
+
+      const pdfBytes = await generateSplnomocneniePdf(bundle);
+      res.set({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="splnomocnenie-${bundle.ico}-${bundle.id.slice(0, 8)}.pdf"`,
+        "Content-Length": pdfBytes.length,
+      });
+      res.end(pdfBytes);
+    } catch (err: any) {
+      console.error("[SPLNOMOCNENIE] Error:", err.message);
+      if (!res.headersSent) res.status(500).json({ error: err.message });
     }
   });
 
