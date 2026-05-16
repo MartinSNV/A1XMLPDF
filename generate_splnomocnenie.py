@@ -22,7 +22,7 @@ FORM_NAME = {
 
 
 def main():
-    data = json.loads(sys.stdin.read())
+    data = json.loads(sys.stdin.buffer.read().decode('utf-8'))
 
     meno = data.get("meno", "")
     obchodne_meno = data.get("obchodneMeno", "")
