@@ -196,6 +196,9 @@ const AdminApp: React.FC = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [filterStatus, setFilterStatus] = useState<BundleStatus | 'ALL'>('ALL');
   const [filterType, setFilterType] = useState<FormType | 'ALL'>('ALL');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [noteText, setNoteText] = useState('');
   const [saving, setSaving] = useState(false);
   const [xmlGenerating, setXmlGenerating] = useState(false);
@@ -301,16 +304,34 @@ const AdminApp: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const deleteBundle = async (id: string) => {
+    if (!window.confirm('Naozaj chcete zmazať túto žiadosť? Akcia je nevratná.')) return;
+    try {
+      await fetch(`/api/bundles/${id}`, { method: 'DELETE' });
+      setBundles(prev => prev.filter(b => b.id !== id));
+      if (selected?.id === id) setSelected(null);
+    } catch {
+      setError('Chyba pri mazaní žiadosti');
+    }
+  };
+
   const newCount = bundles.filter(b => b.status === 'NEW').length;
 
   useEffect(() => {
     document.title = newCount > 0 ? `(${newCount}) A1 XMLPDF – Admin` : 'A1 XMLPDF – Admin';
   }, [newCount]);
 
-  const filtered = bundles.filter(b =>
-    (filterStatus === 'ALL' || b.status === filterStatus) &&
-    (filterType === 'ALL' || b.formType === filterType)
-  );
+  const filtered = bundles.filter(b => {
+    if (filterStatus !== 'ALL' && b.status !== filterStatus) return false;
+    if (filterType !== 'ALL' && b.formType !== filterType) return false;
+    if (filterDateFrom && b.createdAt < filterDateFrom) return false;
+    if (filterDateTo && b.createdAt > filterDateTo + 'T23:59:59') return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!b.ico.includes(q) && !b.companyName.toLowerCase().includes(q) && !b.applicantName.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -355,17 +376,39 @@ const AdminApp: React.FC = () => {
         {/* ── Ľavý panel: zoznam ── */}
         <div className="w-full max-w-md flex-shrink-0">
           {/* Filtre */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4 flex gap-3">
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)}
-              className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white">
-              <option value="ALL">Všetky stavy</option>
-              {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-            <select value={filterType} onChange={e => setFilterType(e.target.value as any)}
-              className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white">
-              <option value="ALL">Všetky typy</option>
-              {Object.entries(FORM_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4 space-y-3">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Hľadať podľa IČO, mena alebo firmy..."
+              className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="flex gap-3">
+              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)}
+                className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white">
+                <option value="ALL">Všetky stavy</option>
+                {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <select value={filterType} onChange={e => setFilterType(e.target.value as any)}
+                className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white">
+                <option value="ALL">Všetky typy</option>
+                {Object.entries(FORM_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-3 items-center">
+              <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+                className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white" />
+              <span className="text-gray-400 text-sm">–</span>
+              <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+                className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white" />
+              {(filterDateFrom || filterDateTo || searchQuery) && (
+                <button onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); setSearchQuery(''); }}
+                  className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap">
+                  Zrušiť
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Zoznam */}
@@ -438,17 +481,24 @@ const AdminApp: React.FC = () => {
                 </div>
 
                 {/* Zmena stavu */}
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {(Object.keys(STATUS_LABELS) as BundleStatus[]).map(s => (
-                    <button key={s}
-                      disabled={selected.status === s || saving}
-                      onClick={() => updateStatus(selected.id, s)}
-                      className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${selected.status === s
-                        ? 'bg-gray-200 text-gray-500 cursor-default'
-                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}>
-                      → {STATUS_LABELS[s]}
-                    </button>
-                  ))}
+                <div className="mt-4 flex flex-wrap gap-2 items-center justify-between">
+                  <div className="flex flex-wrap gap-2">
+                    {(Object.keys(STATUS_LABELS) as BundleStatus[]).map(s => (
+                      <button key={s}
+                        disabled={selected.status === s || saving}
+                        onClick={() => updateStatus(selected.id, s)}
+                        className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${selected.status === s
+                          ? 'bg-gray-200 text-gray-500 cursor-default'
+                          : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}>
+                        → {STATUS_LABELS[s]}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => deleteBundle(selected.id)}
+                    className="text-sm px-3 py-1.5 rounded-lg font-medium bg-red-50 hover:bg-red-100 text-red-600 transition-colors">
+                    Zmazať žiadosť
+                  </button>
                 </div>
               </div>
 

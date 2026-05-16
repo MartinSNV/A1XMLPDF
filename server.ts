@@ -587,6 +587,17 @@ async function startServer() {
     }
   });
 
+  // Zmazanie žiadosti (vrátane príloh cez cascade)
+  app.delete("/api/bundles/:id", async (req, res) => {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Database not configured" });
+      await prisma.documentBundle.delete({ where: { id: req.params.id } });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── Static / Vite ────────────────────────────────────────────────────────
   if (process.env.NODE_ENV === "production") {
     app.use(express.static("dist"));
