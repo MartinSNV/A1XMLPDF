@@ -136,25 +136,22 @@ const PowerOfAttorney: React.FC<Props> = ({ formData, formType, onSign, onBack }
             <p>IČO: {AGENT_ICO}</p>
           </div>
 
-          <div className="mb-6 p-4 bg-gray-50 dark:bg-slate-700 rounded-xl border border-gray-200 dark:border-gray-600">
-            <p className="mb-2">
-              na zastupovanie a podanie žiadosti typu:
-            </p>
-            <p className="font-semibold">{FORM_NAME[formType]}</p>
-            <p className="mt-2">
-              na Sociálnu poisťovňu v mojom mene.
-            </p>
-          </div>
-
-          <p className="mb-2">Splnomocnenie sa vzťahuje na:</p>
+          <p className="mb-4">
+            aby ma v plnom rozsahu zastupoval/a pred Sociálnou poisťovňou Slovenskej
+            republiky vo veci vybavenia <span className="font-semibold">{FORM_NAME[formType]}</span>, a to najmä na:
+          </p>
           <ul className="list-disc list-inside mb-6 space-y-1 text-gray-700 dark:text-gray-300">
-            <li>podanie formulára na Sociálnu poisťovňu SR</li>
-            <li>komunikáciu so Sociálnou poisťovňou vo veci tejto žiadosti</li>
-            <li>prevzatie písomností a rozhodnutí v danej veci</li>
+            <li>podanie žiadosti o vystavenie formulára A1,</li>
+            <li>komunikáciu so Sociálnou poisťovňou,</li>
+            <li>doplnenie, podpisovanie a preberanie súvisiacich dokumentov,</li>
+            <li>prevzatie vystaveného formulára A1 v listinnej alebo elektronickej podobe.</li>
           </ul>
 
+          <p className="mb-2">Toto splnomocnenie sa udeľuje na dobu neurčitú. Je možné ho kedykoľvek písomne odvolať.</p>
+          <p className="mb-6">Splnomocnenie sa udeľuje v súlade s § 31 a nasl. Občianskeho zákonníka.</p>
+
           <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-600">
-            <p>V {adresa.obec || '___________'}, dňa {today}</p>
+            <p>v {adresa.obec || '___________'}, dňa {today}</p>
             <div className="mt-6 flex justify-between items-end">
               <div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Splnomocniteľ:</p>
