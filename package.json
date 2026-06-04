@@ -7,7 +7,9 @@
     "dev": "tsx server.ts",
     "build": "vite build",
     "start": "NODE_ENV=production tsx server.ts",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "sync-rpo": "tsx scripts/sync-rpo.ts",
+    "sync-rpo:full": "tsx scripts/sync-rpo.ts --full"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.7.0",
