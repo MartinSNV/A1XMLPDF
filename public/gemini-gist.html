@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gemini OCR ➜ Gist (Batch Capture)</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 16px;
+      background-color: #f4f4f4;
+      color: #000;
+    }
+
+    body {
+      padding: 1em;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    input, textarea, button {
+      width: 100%;
+      padding: 0.8em;
+      font-size: 1em;
+      margin: 0.5em 0;
+      box-sizing: border-box;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background: #fff;
+      color: #000;
+    }
+
+    button {
+      background-color: #1976d2;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background-color: #1565c0;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* FIX 2: chýbajúci hover pre červené tlačidlo */
+    #btnDeleteGist {
+      background-color: #c62828;
+    }
+
+    #btnDeleteGist:hover {
+      background-color: #b71c1c;
+    }
+
+    #previews {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5em;
+      margin-top: 1em;
+    }
+
+    #previews img {
+      height: 90px;
+      object-fit: contain;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+
+    #output {
+      background: white;
+      padding: 1em;
+      border-radius: 6px;
+      margin-top: 1em;
+      white-space: pre-wrap;
+      font-size: 0.95em;
+    }
+
+    .counter {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 0.5em;
+      color: #1976d2;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      html, body { background-color: #121212; color: #eee; }
+      input, textarea { background-color: #1e1e1e; color: #eee; border: 1px solid #555; }
+      #output { background-color: #1e1e1e; color: #eee; border: 1px solid #333; }
+      .counter { color: #2196f3; }
+    }
+  </style>
+</head>
+<body>
+
+<h2>📸 Dávkové fotenie + Gemini OCR</h2>
+
+<div class="counter" id="imgCount">Počet fotiek: 0</div>
+
+<button id="btnTakePhoto">📷 Spustiť sériové fotenie</button>
+<p style="font-size: 0.8em; color: gray; text-align: center;">(Fotoaparát sa bude otvárať opakovane, kým ho nezrušíte)</p>
+
+<label>
+  📂 Vybrať z galérie:
+  <input type="file" id="fileInput" accept="image/*" multiple>
+</label>
+
+<div id="previews"></div>
+
+<textarea id="prompt" placeholder="Zadaj, čo chceš z dokumentov získať (napr. text, analýza, súhrn)"></textarea>
+<button id="btnProcess">🔍 Spracovať všetko</button>
+<button id="btnDeleteGist">🗑️ Vyčistiť Gist</button>
+
+<pre id="output">Výsledok sa zobrazí tu...</pre>
+
+<script>
+  const GEMINI_API_KEY = "TVOJ_GEMINI_API_KEY";
+  const GIST_ID = "TVOJE_GIST_ID";
+  const GITHUB_TOKEN = "TVOJ_GITHUB_TOKEN";
+
+  const btnTakePhoto = document.getElementById('btnTakePhoto');
+  const btnProcess = document.getElementById('btnProcess');
+  const btnDeleteGist = document.getElementById('btnDeleteGist');
+  const fileInput = document.getElementById('fileInput');
+  const previews = document.getElementById('previews');
+  const output = document.getElementById('output');
+  const imgCountDisplay = document.getElementById('imgCount');
+  let images = [];
+
+  function updateCounter() {
+    imgCountDisplay.textContent = `Počet fotiek: ${images.length}`;
+  }
+
+  // FIX 1: dávkové fotenie — opravené spracovanie zrušenia (cancel event)
+  function startBatchCapture() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+
+    function cleanup() {
+      if (input.parentNode) {
+        document.body.removeChild(input);
+      }
+    }
+
+    input.addEventListener('change', () => {
+      if (input.files.length > 0) {
+        for (const file of input.files) {
+          images.push(file);
+          addPreview(file);
+          updateCounter();
+        }
+        cleanup();
+        setTimeout(startBatchCapture, 100);
+      } else {
+        cleanup();
+      }
+    });
+
+    // FIX 1: cancel event — spúšťa sa keď používateľ zatvori dialóg bez výberu
+    input.addEventListener('cancel', cleanup);
+
+    input.click();
+  }
+
+  // FIX 5: revokácia object URL po načítaní — zamedzenie memory leaku
+  function addPreview(file) {
+    const url = URL.createObjectURL(file);
+    const img = document.createElement('img');
+    img.src = url;
+    img.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+    previews.appendChild(img);
+  }
+
+  async function process() {
+    const promptValue = document.getElementById('prompt').value.trim();
+    if (images.length === 0 || !promptValue) {
+      alert('Pridaj fotky a zadaj prompt.');
+      return;
+    }
+
+    // FIX 6: zakázanie tlačidiel počas spracovania
+    btnProcess.disabled = true;
+    btnDeleteGist.disabled = true;
+    output.textContent = '🔄 Analyzujem dáta cez Gemini...';
+
+    const parts = [{ text: promptValue }];
+    for (const file of images) {
+      const base64 = await toBase64(file);
+      parts.push({
+        inlineData: {
+          mimeType: file.type,
+          data: base64
+        }
+      });
+    }
+
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts }] })
+      });
+
+      // FIX 4: kontrola HTTP chyby pred parsovaním odpovede
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const msg = errData?.error?.message || `HTTP ${res.status}`;
+        output.textContent = `❌ Chyba Gemini API: ${msg}`;
+        return;
+      }
+
+      const data = await res.json();
+      const result = data?.candidates?.[0]?.content?.parts?.[0]?.text || "❌ Nepodarilo sa získať výsledok.";
+      output.textContent = result;
+
+      try {
+        const gistRes = await fetch("https://api.github.com/gists/" + GIST_ID, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + GITHUB_TOKEN
+          },
+          body: JSON.stringify({
+            files: { "gemini-vystup.txt": { content: result } }
+          })
+        });
+
+        // FIX 3: kontrola HTTP chyby pri Gist aktualizácii
+        if (!gistRes.ok) {
+          const errData = await gistRes.json().catch(() => ({}));
+          const msg = errData?.message || `HTTP ${gistRes.status}`;
+          output.textContent += `\n\n⚠️ Chyba Gistu: ${msg}`;
+        } else {
+          const gistData = await gistRes.json();
+          output.textContent += "\n\n🔗 Gist: " + gistData.html_url;
+        }
+      } catch (e) {
+        output.textContent += "\n⚠️ Chyba Gistu: " + e.message;
+      }
+
+    } catch (err) {
+      output.textContent = "❌ Chyba API: " + err.message;
+    } finally {
+      // FIX 6: opätovné povolenie tlačidiel po dokončení
+      btnProcess.disabled = false;
+      btnDeleteGist.disabled = false;
+    }
+  }
+
+  async function deleteGist() {
+    btnDeleteGist.disabled = true;
+    try {
+      const res = await fetch("https://api.github.com/gists/" + GIST_ID, {
+        method: "PATCH",
+        headers: {
+          "Authorization": "Bearer " + GITHUB_TOKEN,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          files: { "gemini-vystup.txt": { content: "Prázdny súbor." } }
+        })
+      });
+
+      // FIX 3: kontrola HTTP chyby
+      if (res.ok) {
+        output.textContent = "🧹 Gist bol vyčistený.";
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        const msg = errData?.message || `HTTP ${res.status}`;
+        output.textContent = `⚠️ Chyba pri vyčistení Gistu: ${msg}`;
+      }
+    } catch (e) {
+      output.textContent = "⚠️ Chyba pri vyčistení Gistu: " + e.message;
+    } finally {
+      btnDeleteGist.disabled = false;
+    }
+  }
+
+  function toBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  btnTakePhoto.addEventListener('click', startBatchCapture);
+  fileInput.addEventListener('change', (e) => {
+    for (const file of e.target.files) {
+      images.push(file);
+      addPreview(file);
+    }
+    updateCounter();
+  });
+  btnProcess.addEventListener('click', process);
+  btnDeleteGist.addEventListener('click', deleteGist);
+</script>
+
+</body>
+</html>
