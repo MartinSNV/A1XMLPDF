@@ -4,10 +4,12 @@ sync_rpo_fo.py
 Synchronizácia RPO FO databázy z ekosystem.slovensko.digital
 Beží v GitHub Actions každú nedeľu
 Optimalizované: batch upserty (100 záznamov naraz)
+Opravené: vyšší timeout, retry s backoffom, exit code pri zlyhaní
 """
 
 import json
 import os
+import sys
 import time
 import re
 import subprocess
@@ -19,8 +21,11 @@ from datetime import datetime, timezone, timedelta
 API_BASE = "https://datahub.ekosystem.slovensko.digital/api/data/rpo2/organizations/sync"
 STATE_FILE = "rpo_sync_state.json"
 COCKROACH_URL = os.environ["COCKROACH_URL"]
-RATE_LIMIT = 50      # requestov za minútu
-BATCH_SIZE = 100     # počet upsertov naraz
+RATE_LIMIT = 50          # requestov za minútu
+BATCH_SIZE = 100         # počet upsertov naraz
+REQUEST_TIMEOUT = 180    # sekúnd na jeden HTTP request
+MAX_RETRIES = 3          # počet pokusov na jednu stránku
+RETRY_BACKOFFS = [10, 30, 60]  # sekúnd čakania medzi pokusmi
 
 def log(msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -36,6 +41,24 @@ def load_state():
 def save_state(since):
     with open(STATE_FILE, "w") as f:
         json.dump({"last_sync_at": since}, f)
+
+def fetch_page(url):
+    """Stiahne jednu stránku s retry logikou. Vráti response alebo None ak zlyhalo úplne."""
+    last_exception = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = requests.get(url, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            return response
+        except Exception as e:
+            last_exception = e
+            log(f"CHYBA API (pokus {attempt}/{MAX_RETRIES}): {e}")
+            if attempt < MAX_RETRIES:
+                wait = RETRY_BACKOFFS[attempt - 1]
+                log(f"Čakám {wait}s pred ďalším pokusom...")
+                time.sleep(wait)
+    log(f"Stránka zlyhala po {MAX_RETRIES} pokusoch: {last_exception}")
+    return None
 
 def is_fyzicka_osoba(org):
     data = org.get("data", {})
@@ -106,6 +129,7 @@ def main():
     total_upserted = 0
     new_since = since
     batch = []
+    had_error = False
 
     request_count = 0
     minute_start = time.time()
@@ -122,13 +146,12 @@ def main():
             request_count = 0
             minute_start = time.time()
 
-        try:
-            response = requests.get(next_url, timeout=30)
-            response.raise_for_status()
-            records = response.json()
-        except Exception as e:
-            log(f"CHYBA API: {e}")
+        response = fetch_page(next_url)
+        if response is None:
+            had_error = True
             break
+
+        records = response.json()
 
         # Získaj ďalšiu stránku z Link hlavičky
         next_url = None
@@ -183,6 +206,10 @@ def main():
     save_state(new_since)
     log(f"Nový sync timestamp: {new_since}")
     log(f"=== Hotovo. Spracovaných: {total_processed}, upsertnutých: {total_upserted} ===")
+
+    if had_error:
+        log("=== Synchronizácia zlyhala (API nedostupné aj po retry pokusoch) ===")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
