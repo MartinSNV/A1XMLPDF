@@ -50,3 +50,11 @@ jobs:
         with:
           path: rpo_sync_state.json
           key: rpo-sync-state-${{ github.run_id }}
+
+      - name: Notify Telegram on failure
+        if: failure()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d parse_mode="HTML" \
+            -d text="⚠️ <b>RPO FO Sync zlyhal</b>%0ARepo: ${{ github.repository }}%0ALog: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
