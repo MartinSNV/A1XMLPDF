@@ -32,6 +32,10 @@ def log(msg):
     print(f"{ts} {msg}", flush=True)
 
 def load_state():
+    since_override = os.environ.get("SINCE_OVERRIDE", "").strip()
+    if since_override:
+        log(f"Použitý manuálny since_override: {since_override}")
+        return {"last_sync_at": since_override}
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE) as f:
             return json.load(f)

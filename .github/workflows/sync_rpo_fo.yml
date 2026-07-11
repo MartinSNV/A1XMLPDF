@@ -5,6 +5,11 @@ on:
     # Každú nedeľu o 4:00 UTC (= 6:00 SK letný čas)
     - cron: '0 6 * * 0'
   workflow_dispatch:
+    inputs:
+      since_override:
+        description: 'Voliteľné: ISO timestamp odkiaľ začať sync (napr. 2026-05-01T00:00:00Z). Nechaj prázdne pre normálny beh.'
+        required: false
+        default: ''
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -34,6 +39,7 @@ jobs:
       - name: Run RPO FO Sync
         env:
           COCKROACH_URL: ${{ secrets.COCKROACH_URL }}
+          SINCE_OVERRIDE: ${{ github.event.inputs.since_override }}
         run: |
           pip install requests
           python3 sync_rpo_fo.py
