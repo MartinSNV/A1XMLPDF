@@ -204,11 +204,10 @@ async function startServer() {
   // ── Admin Basic Auth ─────────────────────────────────────────────────────
   const ADMIN_USER = process.env.ADMIN_USER || "admin";
   const ADMIN_PASS_HASH = process.env.ADMIN_PASS_HASH || "";
-  const ADMIN_PASS = process.env.ADMIN_PASS || ""; // fallback pre dev (plaintext)
 
   const IS_PROD = process.env.NODE_ENV === "production";
 
-  // Timing-safe porovnanie reťazcov (pre meno, príp. plaintext heslo)
+  // Timing-safe porovnanie reťazcov (pre meno)
   const safeEqual = (a: string, b: string) => {
     const bufA = Buffer.from(a);
     const bufB = Buffer.from(b);
@@ -216,11 +215,10 @@ async function startServer() {
   };
 
   const basicAuth = (req: any, res: any, next: any) => {
-    const hasCredential = !!ADMIN_PASS_HASH || !!ADMIN_PASS;
-    if (!hasCredential) {
+    if (!ADMIN_PASS_HASH) {
       // V produkcii sa nikdy nesmie vypnúť ochrana — fail-closed.
       if (IS_PROD) {
-        console.error("[AUTH] ADMIN_PASS_HASH ani ADMIN_PASS nie sú nastavené — admin je zablokovaný");
+        console.error("[AUTH] ADMIN_PASS_HASH nie je nastavené — admin je zablokovaný");
         return res.status(503).send("Admin nie je nakonfigurovaný (chýba ADMIN_PASS_HASH)");
       }
       return next(); // len v dev móde pustí ďalej
@@ -233,10 +231,7 @@ async function startServer() {
     const [user, pass] = Buffer.from(auth.slice(6), "base64").toString().split(":");
 
     const userOk = safeEqual(user || "", ADMIN_USER);
-    // Uprednostni bcrypt hash; ak nie je, padni na timing-safe plaintext (dev)
-    const passOk = ADMIN_PASS_HASH
-      ? bcrypt.compareSync(pass || "", ADMIN_PASS_HASH)
-      : safeEqual(pass || "", ADMIN_PASS);
+    const passOk = bcrypt.compareSync(pass || "", ADMIN_PASS_HASH);
 
     if (!userOk || !passOk) {
       res.set("WWW-Authenticate", 'Basic realm="Admin"');
