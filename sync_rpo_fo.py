@@ -70,7 +70,7 @@ def is_fyzicka_osoba(org):
         return False
     for lf in data.get("legalForms", []):
         code = lf.get("value", {}).get("code", "")
-        if code and code.startswith("1") and len(code) == 3:
+        if code in ("101", "102", "103", "105"):
             return True
     return False
 
