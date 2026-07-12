@@ -9,6 +9,7 @@ import os from "os";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
+import helmet from "helmet";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import { generateFilledPdf } from "./generatePdf.js";
@@ -202,6 +203,12 @@ async function startServer() {
 
   // Za Northflank proxy — reálna IP klienta je v X-Forwarded-For
   app.set("trust proxy", 1);
+
+  // Bezpečnostné HTTP hlavičky. CSP zatiaľ vypnuté (doladíme neskôr, aby sa
+  // nerozbil frontend), ostatné hlavičky sú aktívne (nosniff, frame-options, HSTS...)
+  app.use(helmet({
+    contentSecurityPolicy: false,
+  }));
 
   app.use(express.json({ limit: "10mb" }));
 
