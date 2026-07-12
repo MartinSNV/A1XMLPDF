@@ -33,9 +33,10 @@ RUN npm install
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
 COPY server.ts generatePdf.ts types.ts generateXmlBackend.ts constants.ts ./
-COPY fill_a1_pdf.py validate_xml.py ./
+COPY fill_a1_pdf.py validate_xml.py generate_splnomocnenie.py ./
 COPY prisma ./prisma
 COPY schemas ./schemas
+COPY fonts ./fonts
 
 # Generuj Prisma client
 RUN npx prisma generate

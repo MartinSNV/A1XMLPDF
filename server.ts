@@ -6,6 +6,7 @@ import { spawn } from "child_process";
 import { writeFile, unlink } from "fs/promises";
 import path from "path";
 import os from "os";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import { generateFilledPdf } from "./generatePdf.js";
@@ -203,15 +204,30 @@ async function startServer() {
   const ADMIN_USER = process.env.ADMIN_USER || "admin";
   const ADMIN_PASS = process.env.ADMIN_PASS || "";
 
+  const IS_PROD = process.env.NODE_ENV === "production";
+
   const basicAuth = (req: any, res: any, next: any) => {
-    if (!ADMIN_PASS) return next(); // ak nie je nastavené heslo, pustí ďalej (dev)
+    if (!ADMIN_PASS) {
+      // V produkcii sa nikdy nesmie vypnúť ochrana — fail-closed.
+      if (IS_PROD) {
+        console.error("[AUTH] ADMIN_PASS nie je nastavené — admin je zablokovaný");
+        return res.status(503).send("Admin nie je nakonfigurovaný (chýba ADMIN_PASS)");
+      }
+      return next(); // len v dev móde pustí ďalej
+    }
     const auth = req.headers.authorization;
     if (!auth || !auth.startsWith("Basic ")) {
       res.set("WWW-Authenticate", 'Basic realm="Admin"');
       return res.status(401).send("Vyžaduje sa prihlásenie");
     }
     const [user, pass] = Buffer.from(auth.slice(6), "base64").toString().split(":");
-    if (user !== ADMIN_USER || pass !== ADMIN_PASS) {
+    // Timing-safe porovnanie mena aj hesla
+    const safeEqual = (a: string, b: string) => {
+      const bufA = Buffer.from(a);
+      const bufB = Buffer.from(b);
+      return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+    };
+    if (!safeEqual(user || "", ADMIN_USER) || !safeEqual(pass || "", ADMIN_PASS)) {
       res.set("WWW-Authenticate", 'Basic realm="Admin"');
       return res.status(401).send("Nesprávne meno alebo heslo");
     }
