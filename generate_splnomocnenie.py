@@ -6,11 +6,11 @@ Výstup: binárne PDF bajty na stdout.
 import sys
 import json
 import base64
+import io
 import tempfile
 import os
 from fpdf import FPDF
-from PIL import Image
-import numpy as np
+from PIL import Image, ImageOps, ImageChops
 
 FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
@@ -128,31 +128,20 @@ def main():
             sig = sig.split(",", 1)[1]
         img_bytes = base64.b64decode(sig)
 
-        # Konvertuj čierne ťahy na modrú farbu pera, pozadie transparentné
-        img = Image.open(__import__('io').BytesIO(img_bytes)).convert("RGBA")
-        arr = np.array(img, dtype=np.float32)
+        # Konvertuj čierne ťahy na modré pero (čisté Pillow, bez numpy)
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
 
-        # Intenzita atramentu — tmavé pixely = viditeľné ťahy
-        # Použijeme inverzný alpha kanál z jasu
-        r, g, b, a = arr[..., 0], arr[..., 1], arr[..., 2], arr[..., 3]
-        brightness = (r + g + b) / 3.0
+        # Maska intenzity atramentu = (255 - jas) * alpha / 255
+        # Tmavé, nepriehľadné pixely → silný atrament; svetlé/priehľadné → nič
+        brightness = img.convert("L")                       # jas ťahov
+        ink = ImageOps.invert(brightness)                   # 255 - jas
+        alpha = img.split()[3]                              # alpha kanál canvasu
+        mask = ImageChops.multiply(ink, alpha)             # (ink * alpha) / 255
 
-        # Kde je canvas priehľadný alebo biely → bez atramentu
-        ink_alpha = np.where(a < 10, 0.0, np.clip((255.0 - brightness) * (a / 255.0), 0, 255))
-
-        # Farba modrého pera: #1a44b8 — tmavá kráľovská modrá
-        out = np.zeros_like(arr)
-        out[..., 0] = 26    # R
-        out[..., 1] = 68    # G
-        out[..., 2] = 184   # B
-        out[..., 3] = ink_alpha
-
-        result = Image.fromarray(out.astype(np.uint8), "RGBA")
-
-        # Ulož na biely podklad (PDF nepodporuje priehľadnosť v rasteroch bez trickov)
-        bg = Image.new("RGBA", result.size, (255, 255, 255, 255))
-        bg.paste(result, mask=result.split()[3])
-        final = bg.convert("RGB")
+        # Modré pero (#1a44b8) namaľované cez masku na biele pozadie
+        final = Image.new("RGB", img.size, (255, 255, 255))
+        blue = Image.new("RGB", img.size, (26, 68, 184))
+        final.paste(blue, mask=mask)
 
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             final.save(f, format="PNG")
