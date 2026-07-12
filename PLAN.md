@@ -65,9 +65,9 @@ SZČO                          Správca (ty)
 
 - [x] B1 – Zobraziť chyby XSD validácie priamo vo formulári po kliknutí "Podať žiadosť"
 - [x] B2 – Potvrdzovacie okno pred podaním ("Naozaj chcete podať žiadosť?")
-- [ ] B3 – Dokončenie PDF pre formulár Uplatniteľná legislatíva
-- [ ] B4 – Splnomocnenie aj pre formulár Uplatniteľná legislatíva
-- [ ] B5 – Uloženie podpisu (signatureBase64) do DB (pole v modeli DocumentBundle)
+- [~] B3 – PDF pre formulár Uplatniteľná legislatíva – *odložené (chýba oficiálna PDF šablóna SP)*
+- [x] B4 – Splnomocnenie aj pre formulár Uplatniteľná legislatíva (krok `poa-uplatnitelna`)
+- [x] B5 – Uloženie podpisu (signatureBase64) do DB – ukladá sa pre oba typy formulárov
 - [ ] B6 – Testovanie na reálnych podaniach (overenie akceptácie SP)
 
 ---
