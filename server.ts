@@ -8,6 +8,7 @@ import path from "path";
 import os from "os";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import rateLimit from "express-rate-limit";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import { generateFilledPdf } from "./generatePdf.js";
@@ -199,7 +200,29 @@ async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);
 
+  // Za Northflank proxy — reálna IP klienta je v X-Forwarded-For
+  app.set("trust proxy", 1);
+
   app.use(express.json({ limit: "10mb" }));
+
+  // ── Rate limiters ──────────────────────────────────────────────────────────
+  // Podanie žiadosti: max 10 z jednej IP za 15 minút (ochrana DB pred zahltením)
+  const submitLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Príliš veľa podaní z tejto adresy. Skúste to neskôr." },
+  });
+
+  // RPO/RÚZ dotazy: max 60 z jednej IP za 5 minút (ochrana externých registrov)
+  const rpoLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Príliš veľa dotazov do registra. Skúste to neskôr." },
+  });
 
   // ── Admin Basic Auth ─────────────────────────────────────────────────────
   const ADMIN_USER = process.env.ADMIN_USER || "admin";
@@ -244,6 +267,9 @@ async function startServer() {
   app.use("/admin", basicAuth);
   app.use("/api/bundles", basicAuth);
   app.use("/api/attachments", basicAuth);
+
+  // Rate-limiting na verejné endpointy
+  app.use("/api/rpo", rpoLimiter);
 
   // ── API routes ───────────────────────────────────────────────────────────
 
@@ -384,7 +410,7 @@ async function startServer() {
   });
 
   // ── POST /api/submit — podanie žiadosti s prílohami ─────────────────────
-  app.post("/api/submit", upload.array("attachments", 20), async (req, res) => {
+  app.post("/api/submit", submitLimiter, upload.array("attachments", 20), async (req, res) => {
     try {
       if (!prisma) return res.status(503).json({ error: "Databáza nie je nakonfigurovaná" });
 
