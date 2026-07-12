@@ -7,6 +7,7 @@ import { writeFile, unlink } from "fs/promises";
 import path from "path";
 import os from "os";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import { generateFilledPdf } from "./generatePdf.js";
@@ -202,16 +203,25 @@ async function startServer() {
 
   // ── Admin Basic Auth ─────────────────────────────────────────────────────
   const ADMIN_USER = process.env.ADMIN_USER || "admin";
-  const ADMIN_PASS = process.env.ADMIN_PASS || "";
+  const ADMIN_PASS_HASH = process.env.ADMIN_PASS_HASH || "";
+  const ADMIN_PASS = process.env.ADMIN_PASS || ""; // fallback pre dev (plaintext)
 
   const IS_PROD = process.env.NODE_ENV === "production";
 
+  // Timing-safe porovnanie reťazcov (pre meno, príp. plaintext heslo)
+  const safeEqual = (a: string, b: string) => {
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+  };
+
   const basicAuth = (req: any, res: any, next: any) => {
-    if (!ADMIN_PASS) {
+    const hasCredential = !!ADMIN_PASS_HASH || !!ADMIN_PASS;
+    if (!hasCredential) {
       // V produkcii sa nikdy nesmie vypnúť ochrana — fail-closed.
       if (IS_PROD) {
-        console.error("[AUTH] ADMIN_PASS nie je nastavené — admin je zablokovaný");
-        return res.status(503).send("Admin nie je nakonfigurovaný (chýba ADMIN_PASS)");
+        console.error("[AUTH] ADMIN_PASS_HASH ani ADMIN_PASS nie sú nastavené — admin je zablokovaný");
+        return res.status(503).send("Admin nie je nakonfigurovaný (chýba ADMIN_PASS_HASH)");
       }
       return next(); // len v dev móde pustí ďalej
     }
@@ -221,13 +231,14 @@ async function startServer() {
       return res.status(401).send("Vyžaduje sa prihlásenie");
     }
     const [user, pass] = Buffer.from(auth.slice(6), "base64").toString().split(":");
-    // Timing-safe porovnanie mena aj hesla
-    const safeEqual = (a: string, b: string) => {
-      const bufA = Buffer.from(a);
-      const bufB = Buffer.from(b);
-      return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
-    };
-    if (!safeEqual(user || "", ADMIN_USER) || !safeEqual(pass || "", ADMIN_PASS)) {
+
+    const userOk = safeEqual(user || "", ADMIN_USER);
+    // Uprednostni bcrypt hash; ak nie je, padni na timing-safe plaintext (dev)
+    const passOk = ADMIN_PASS_HASH
+      ? bcrypt.compareSync(pass || "", ADMIN_PASS_HASH)
+      : safeEqual(pass || "", ADMIN_PASS);
+
+    if (!userOk || !passOk) {
       res.set("WWW-Authenticate", 'Basic realm="Admin"');
       return res.status(401).send("Nesprávne meno alebo heslo");
     }
