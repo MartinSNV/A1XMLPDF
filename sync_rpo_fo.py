@@ -26,6 +26,9 @@ BATCH_SIZE = 100         # počet upsertov naraz
 REQUEST_TIMEOUT = 180    # sekúnd na jeden HTTP request
 MAX_RETRIES = 3          # počet pokusov na jednu stránku
 RETRY_BACKOFFS = [10, 30, 60]  # sekúnd čakania medzi pokusmi
+PSQL_TIMEOUT = 120       # sekúnd na jeden batch upsert (CockroachDB môže škrtiť pri RU limite)
+PSQL_RETRIES = 3         # počet pokusov na jeden batch
+PSQL_BACKOFFS = [15, 45, 90]   # sekúnd čakania medzi pokusmi o upsert
 
 def log(msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -83,9 +86,10 @@ def extract_ico(org):
     return None
 
 def batch_upsert(records):
-    """Upsertni viac záznamov naraz v jednom SQL príkaze"""
+    """Upsertni viac záznamov naraz v jednom SQL príkaze.
+    Vráti True ak sa batch podaril, False ak zlyhal aj po retry pokusoch."""
     if not records:
-        return
+        return True
 
     values = []
     for ico, legal_form_code, is_fo, is_inactive, data_json in records:
@@ -110,12 +114,27 @@ ON CONFLICT ON CONSTRAINT rpo_fo_ico_unique DO UPDATE SET
         tmp_path = f.name
 
     try:
-        result = subprocess.run(
-            ["psql", COCKROACH_URL, "-f", tmp_path],
-            capture_output=True, text=True, timeout=60
-        )
-        if result.returncode != 0:
-            log(f"CHYBA batch upsert: {result.stderr[:300]}")
+        for attempt in range(1, PSQL_RETRIES + 1):
+            try:
+                result = subprocess.run(
+                    ["psql", COCKROACH_URL, "-f", tmp_path],
+                    capture_output=True, text=True, timeout=PSQL_TIMEOUT
+                )
+                if result.returncode == 0:
+                    return True
+                log(f"CHYBA batch upsert (pokus {attempt}/{PSQL_RETRIES}): {result.stderr[:300]}")
+            except subprocess.TimeoutExpired:
+                # CockroachDB škrtí dotazy pri vyčerpaní Request Units –
+                # nesmie to zhodiť celý beh, skúsime znova po pauze.
+                log(f"TIMEOUT batch upsert po {PSQL_TIMEOUT}s (pokus {attempt}/{PSQL_RETRIES})")
+
+            if attempt < PSQL_RETRIES:
+                wait = PSQL_BACKOFFS[attempt - 1]
+                log(f"Čakám {wait}s pred ďalším pokusom o upsert...")
+                time.sleep(wait)
+
+        log(f"Batch {len(records)} záznamov zlyhal po {PSQL_RETRIES} pokusoch")
+        return False
     finally:
         os.unlink(tmp_path)
 
@@ -194,25 +213,36 @@ def main():
             batch.append((ico, legal_form_code, True, is_inactive, data_json))
 
             if len(batch) >= BATCH_SIZE:
-                batch_upsert(batch)
+                if not batch_upsert(batch):
+                    had_error = True
+                    break
                 total_upserted += len(batch)
                 log(f"Spracovaných: {total_processed}, upsertnutých FO: {total_upserted}")
                 batch = []
 
-        log(f"Stránka hotová. Celkom: {total_processed}, FO: {total_upserted}")
+        if had_error:
+            break
+
+        # Postup ukladáme priebežne – keď beh spadne (RU limit, timeout),
+        # ďalší beh pokračuje odtiaľto a nezačína znova od nuly.
+        save_state(new_since)
+        log(f"Stránka hotová. Celkom: {total_processed}, FO: {total_upserted}, since={new_since}")
 
     # Upsertni zvyšok
     if batch:
-        batch_upsert(batch)
-        total_upserted += len(batch)
-        log(f"Posledný batch: {len(batch)} záznamov")
+        if batch_upsert(batch):
+            total_upserted += len(batch)
+            log(f"Posledný batch: {len(batch)} záznamov")
+        else:
+            had_error = True
 
     save_state(new_since)
     log(f"Nový sync timestamp: {new_since}")
     log(f"=== Hotovo. Spracovaných: {total_processed}, upsertnutých: {total_upserted} ===")
 
     if had_error:
-        log("=== Synchronizácia zlyhala (API nedostupné aj po retry pokusoch) ===")
+        log("=== Synchronizácia zlyhala (API alebo DB nedostupné aj po retry pokusoch) ===")
+        log("Postup je uložený – ďalší beh bude pokračovať od posledného úspešného bodu.")
         sys.exit(1)
 
 if __name__ == "__main__":
