@@ -3,7 +3,7 @@
 sync_rpo_fo.py
 Synchronizácia RPO FO databázy z ekosystem.slovensko.digital
 Beží v GitHub Actions každú nedeľu
-Optimalizované: batch upserty (100 záznamov naraz)
+Optimalizované: batch upserty (1000 záznamov naraz)
 Opravené: vyšší timeout, retry s backoffom, exit code pri zlyhaní
 """
 
@@ -22,7 +22,7 @@ API_BASE = "https://datahub.ekosystem.slovensko.digital/api/data/rpo2/organizati
 STATE_FILE = "rpo_sync_state.json"
 COCKROACH_URL = os.environ["COCKROACH_URL"]
 RATE_LIMIT = 50          # requestov za minútu
-BATCH_SIZE = 100         # počet upsertov naraz
+BATCH_SIZE = 1000        # počet upsertov naraz
 REQUEST_TIMEOUT = 180    # sekúnd na jeden HTTP request
 MAX_RETRIES = 3          # počet pokusov na jednu stránku
 RETRY_BACKOFFS = [10, 30, 60]  # sekúnd čakania medzi pokusmi
@@ -151,6 +151,9 @@ def main():
     total_processed = 0
     total_upserted = 0
     new_since = since
+    # safe_since = pokrok, ktorý je UŽ zapísaný v DB. Ukladáme len tento,
+    # inak by sa pri páde stratili záznamy čakajúce v batchi.
+    safe_since = since
     batch = []
     had_error = False
 
@@ -216,6 +219,7 @@ def main():
                 if not batch_upsert(batch):
                     had_error = True
                     break
+                safe_since = new_since
                 total_upserted += len(batch)
                 log(f"Spracovaných: {total_processed}, upsertnutých FO: {total_upserted}")
                 batch = []
@@ -225,19 +229,20 @@ def main():
 
         # Postup ukladáme priebežne – keď beh spadne (RU limit, timeout),
         # ďalší beh pokračuje odtiaľto a nezačína znova od nuly.
-        save_state(new_since)
-        log(f"Stránka hotová. Celkom: {total_processed}, FO: {total_upserted}, since={new_since}")
+        save_state(safe_since)
+        log(f"Stránka hotová. Celkom: {total_processed}, FO: {total_upserted}, zapísané_po={safe_since}")
 
     # Upsertni zvyšok
     if batch:
         if batch_upsert(batch):
+            safe_since = new_since
             total_upserted += len(batch)
             log(f"Posledný batch: {len(batch)} záznamov")
         else:
             had_error = True
 
-    save_state(new_since)
-    log(f"Nový sync timestamp: {new_since}")
+    save_state(safe_since)
+    log(f"Nový sync timestamp: {safe_since}")
     log(f"=== Hotovo. Spracovaných: {total_processed}, upsertnutých: {total_upserted} ===")
 
     if had_error:
