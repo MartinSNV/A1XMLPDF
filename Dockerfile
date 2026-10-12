@@ -32,11 +32,12 @@ RUN npm install
 # Copy built frontend and server files
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
-COPY server.ts generatePdf.ts types.ts generateXmlBackend.ts constants.ts ./
+COPY server.ts generatePdf.ts types.ts generateXmlBackend.ts constants.ts apiAuth.ts ./
 COPY fill_a1_pdf.py validate_xml.py generate_splnomocnenie.py ./
 COPY prisma ./prisma
 COPY schemas ./schemas
 COPY fonts ./fonts
+COPY scripts ./scripts
 
 # Generuj Prisma client
 RUN npx prisma generate

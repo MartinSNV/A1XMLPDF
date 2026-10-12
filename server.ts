@@ -10,6 +10,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
+import { rpoAuth, initApiAuth, injectAppToken } from "./apiAuth.js";
 import { fileURLToPath } from "url";
 import multer from "multer";
 import { generateFilledPdf } from "./generatePdf.js";
@@ -23,6 +24,8 @@ const prisma: PrismaClient | null = process.env.DATABASE_URL
   ? new PrismaClient({ adapter: new PrismaPg(new Pool({ connectionString: process.env.DATABASE_URL })) })
   : null;
 if (!prisma) console.warn("[DB] DATABASE_URL not set – running without database");
+
+initApiAuth(prisma);
 
 const rpoPool = process.env.RPO_DATABASE_URL
   ? new Pool({
@@ -277,12 +280,19 @@ async function startServer() {
 
   // Rate-limiting na verejné endpointy
   app.use("/api/rpo", rpoLimiter);
+  // Autorizácia: X-API-Key (cudzie projekty) alebo X-App-Token (vlastná appka)
+  app.use("/api/rpo", rpoAuth);
 
   // ── API routes ───────────────────────────────────────────────────────────
 
+  // IČO musí byť presne 8 číslic – zabráni sondovaniu aj vloženiu cudzích
+  // parametrov do URL externých registrov
+  const isValidIco = (v: unknown): v is string =>
+    typeof v === "string" && /^\d{8}$/.test(v);
+
   app.get("/api/rpo/entity", async (req, res) => {
     const { ico } = req.query;
-    if (!ico) return res.status(400).json({ error: "Missing ICO" });
+    if (!isValidIco(ico)) return res.status(400).json({ error: "IČO musí byť 8 číslic" });
 
     // ── Krok 0: lokálna cache ────────────────────────────────────────────────
     const cached = await lookupLocalCache(ico as string);
@@ -348,7 +358,7 @@ async function startServer() {
   app.get("/api/rpo/search", async (req, res) => {
     try {
       const { identifier } = req.query;
-      if (!identifier) return res.status(400).json({ error: "Missing identifier" });
+      if (!isValidIco(identifier)) return res.status(400).json({ error: "IČO musí byť 8 číslic" });
       const data = await fetchWithRetry(
         `https://api.statistics.sk/rpo/v1/search?identifier=${identifier}`
       );
@@ -379,7 +389,7 @@ async function startServer() {
 
   app.get("/api/rpo/detail-async", async (req, res) => {
     const { ico } = req.query;
-    if (!ico) return res.status(400).json({ error: "Missing ICO" });
+    if (!isValidIco(ico)) return res.status(400).json({ error: "IČO musí byť 8 číslic" });
     const t0 = Date.now();
     try {
       const searchUrl = `https://api.statistics.sk/rpo/v1/search?identifier=${ico}`;
@@ -734,11 +744,15 @@ async function startServer() {
 
   // ── Static / Vite ────────────────────────────────────────────────────────
   if (process.env.NODE_ENV === "production") {
-    app.use(express.static("dist"));
+    // index: false – aby "/" prešlo na handler nižšie, ktorý vkladá app token
+    app.use(express.static("dist", { index: false }));
     app.get("/admin", (_req, res) => res.sendFile("admin/index.html", { root: "dist" }));
     app.get("/admin/*splat", (_req, res) => res.sendFile("admin/index.html", { root: "dist" }));
-    app.get("/{*splat}", (_req, res) => {
-      res.sendFile("index.html", { root: "dist" });
+    app.get("/{*splat}", async (_req, res) => {
+      const { readFile } = await import("fs/promises");
+      const html = await readFile(path.join(__dirname, "dist", "index.html"), "utf-8");
+      // no-store: HTML nesie krátkodobý app token, nesmie sa kešovať
+      res.set("Cache-Control", "no-store").type("html").send(injectAppToken(html));
     });
   } else {
     const vite = await createViteServer({
@@ -760,7 +774,8 @@ async function startServer() {
       const { readFile } = await import("fs/promises");
       let html = await readFile(path.join(__dirname, "index.html"), "utf-8");
       html = await vite.transformIndexHtml(req.originalUrl, html);
-      res.status(200).set({ "Content-Type": "text/html" }).end(html);
+      html = injectAppToken(html);
+      res.status(200).set({ "Content-Type": "text/html", "Cache-Control": "no-store" }).end(html);
     });
   }
 

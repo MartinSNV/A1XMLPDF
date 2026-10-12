@@ -53,6 +53,23 @@ model Attachment {
   data       Bytes
 }
 
+model ApiKey {
+  id         String    @id @default(cuid())
+  createdAt  DateTime  @default(now())
+
+  name       String    // kto kľúč používa (napr. "Projekt XY – VBA")
+  keyHash    String    @unique // SHA-256 hex, plaintext kľúč sa neukladá
+  active     Boolean   @default(true)
+
+  // Denná kvóta – hlavná ochrana, keďže kľúč vo VBA môže uniknúť
+  dailyLimit Int       @default(200)
+  usedToday  Int       @default(0)
+  usageDate  String    @default("") // YYYY-MM-DD, slúži na denný reset
+
+  totalCount Int       @default(0)
+  lastUsedAt DateTime?
+}
+
 enum FormType {
   PD_A1
   UPLATNITELNA_LEGISLATIVA

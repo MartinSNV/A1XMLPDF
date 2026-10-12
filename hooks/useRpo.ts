@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { FormDataState, Address } from '../types';
 import { BRANCH_OFFICE_BY_PSC } from '../psc_mapping';
 
+// App token vkladá server do <head> servovaného index.html.
+// Autorizuje dotazy na /api/rpo/* bez toho, aby bol kľúč v kóde frontendu.
+const APP_TOKEN =
+    (document.querySelector('meta[name="app-token"]') as HTMLMetaElement | null)?.content || '';
+const RPO_HEADERS: HeadersInit = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
+
 interface RpoActivity {
     economicActivityDescription: string;
     validFrom: string;
@@ -137,7 +143,11 @@ export const useRpo = (ico: string, setFormData: React.Dispatch<React.SetStateAc
                         await new Promise(r => setTimeout(r, delay));
                     }
 
-                    const response = await fetch(`/api/rpo/entity?ico=${cleanIco}`);
+                    const response = await fetch(`/api/rpo/entity?ico=${cleanIco}`, { headers: RPO_HEADERS });
+
+                    if (response.status === 401) {
+                        throw new Error('Prístup vypršal. Obnovte stránku (F5) a skúste znova.');
+                    }
 
                     if (response.status === 429) {
                         lastError = 'RPO API je dočasne preťažené (rate limit). Skúšam znova...';
@@ -203,7 +213,7 @@ export const useRpo = (ico: string, setFormData: React.Dispatch<React.SetStateAc
                         setLoadingDetail(true);
                         const detailTimeout = setTimeout(() => setLoadingDetail(false), 10000);
 
-                        fetch(`/api/rpo/detail-async?ico=${cleanIco}`)
+                        fetch(`/api/rpo/detail-async?ico=${cleanIco}`, { headers: RPO_HEADERS })
                             .then(r => r.json())
                             .then((detail: RpoDetail) => {
                                 clearTimeout(detailTimeout);
