@@ -33,9 +33,22 @@ ani meniť `.github/`. Poistka proti slučke: beh, ktorý spustil sám agent, ag
 
 ### Jednorazové nastavenie
 
-1. **Secret `ANTHROPIC_API_KEY`** – GitHub → Settings → Secrets and variables → Actions.
-   Bez neho sa agent nespustí a na Telegram príde len správa, že chýba kľúč.
-2. **Claude GitHub App** nainštalovaná na repo (z Claude Code: `/install-github-app`).
+1. **Secret `CLAUDE_CODE_OAUTH_TOKEN`** – jednoročný token z tvojho predplatného
+   (Pro, Max, Team alebo Enterprise). Vygeneruješ ho príkazom `claude setup-token`:
+   otvorí prehliadač, po schválení vypíše token do terminálu. Ulož ho bez zobrazenia:
+
+   ```powershell
+   gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo MartinSNV/A1XMLPDF
+   ```
+
+   Bez neho sa agent nespustí a na Telegram príde len správa, že token chýba.
+   Token vyprší po roku – vtedy agent prestane fungovať, tak si to zaznač.
+   Behy sa počítajú do limitov predplatného. Alternatíva je API kľúč z Claude Console
+   (v workflowe vstup `anthropic_api_key`, secret `ANTHROPIC_API_KEY`).
+2. **Claude GitHub App** nainštalovaná len na toto repo: `https://github.com/apps/claude`.
+   Aplikácia žiada široké oprávnenia (vrátane Actions a Workflows zápis), GitHub neumožňuje
+   prijať len časť. Obmedzenie agenta (nepushuje do `main`, nemení `.github/`) preto stojí
+   na zozname povolených príkazov vo workflowe, nie na oprávneniach tokenu.
 3. **Settings → Actions → General → Workflow permissions**: zapnúť
    „Allow GitHub Actions to create and approve pull requests" (inak agent PR neotvorí).
 

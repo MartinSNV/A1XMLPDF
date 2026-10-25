@@ -6,8 +6,9 @@ name: Sync Failure Agent
 #   - nejasná príčina                                    -> nič nemení, len nahlási
 # Výsledok pošle na Telegram. Agent NEMÁ prístup k DB ani k secretom.
 #
-# Vyžaduje: secret ANTHROPIC_API_KEY, nainštalovanú Claude GitHub App a v nastaveniach
-# repa "Allow GitHub Actions to create and approve pull requests". Pozri MONITORING.md.
+# Vyžaduje: secret CLAUDE_CODE_OAUTH_TOKEN (token z predplatného, `claude setup-token`),
+# nainštalovanú Claude GitHub App a v nastaveniach repa "Allow GitHub Actions to create
+# and approve pull requests". Pozri MONITORING.md.
 
 on:
   workflow_run:
@@ -26,11 +27,12 @@ concurrency:
 
 jobs:
   diagnose:
-    # Poistka proti slučke: beh, ktorý spustil sám agent (actor = github-actions[bot]),
-    # agenta znova nespúšťa. Zlyhanie takého behu ti príde z Telegramu sync workflow-u.
+    # Poistka proti slučke: beh, ktorý spustil bot (agent cez github-actions[bot] alebo
+    # claude[bot]), agenta znova nespúšťa. Zlyhanie takého behu ti príde z Telegramu
+    # sync workflow-u. Samotná action by bota ako spúšťača aj tak odmietla.
     if: >-
       github.event.workflow_run.conclusion == 'failure' &&
-      github.event.workflow_run.triggering_actor.login != 'github-actions[bot]'
+      github.event.workflow_run.triggering_actor.type != 'Bot'
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -41,10 +43,10 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Gate (je nastavený ANTHROPIC_API_KEY?)
+      - name: Gate (je nastavený CLAUDE_CODE_OAUTH_TOKEN?)
         id: gate
         env:
-          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          KEY: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: echo "ok=$([ -n "$KEY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Git identity
@@ -58,7 +60,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             Si pohotovostný agent pre RPO synchronizáciu projektu A1XMLPDF
             (skript sync_rpo_fo.py, workflow sync_rpo_fo.yml). Beh číslo
@@ -104,7 +106,7 @@ jobs:
           if [ -f agent_report.md ]; then
             { echo "Agent k zlyhaniu RPO sync-u:"; echo; cat agent_report.md; } > msg.txt
           elif [ "$GATE_OK" != "true" ]; then
-            echo "RPO sync zlyhal, agent sa nespustil (chýba secret ANTHROPIC_API_KEY)." > msg.txt
+            echo "RPO sync zlyhal, agent sa nespustil (chýba secret CLAUDE_CODE_OAUTH_TOKEN)." > msg.txt
           else
             echo "RPO sync zlyhal a agent nevytvoril report. Pozri log agenta." > msg.txt
           fi
