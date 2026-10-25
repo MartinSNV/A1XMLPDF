@@ -1,0 +1,48 @@
+name: Health Check
+
+# Denná kontrola RPO sync-u a produkčnej appky. Telegram príde LEN pri probléme.
+
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install psql
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run health checks
+        env:
+          COCKROACH_URL: ${{ secrets.COCKROACH_URL }}
+          GH_TOKEN: ${{ github.token }}
+          # ručné spustenie vždy skontroluje aj počet riadkov (inak len v pondelok)
+          FORCE_COUNT: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+        run: python3 scripts/health_check.py
+
+      - name: Notify Telegram on problem
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -f health_report.txt ] || echo "Kontrola zdravia zlyhala bez reportu." > health_report.txt
+          printf '\n\nLog: %s\n' "$RUN_URL" >> health_report.txt
+          head -c 3500 health_report.txt > health_msg.txt
+          curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "text@health_msg.txt" > /dev/null
