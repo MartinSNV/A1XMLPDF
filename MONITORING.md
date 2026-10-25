@@ -20,6 +20,19 @@ Skript vytvorí v CockroachDB malú tabuľku `defaultdb.rpo_health` (základ pre
 
 ## 2. Agent po zlyhaní sync-u
 
+> **Stav: VYPNUTÝ** (`gh workflow disable sync_failure_agent.yml`). Pripravený workflow
+> je v repe, ale nebeží. Dôvod: token z predplatného (`claude setup-token`) Anthropic
+> odmieta aj lokálne, aj na GitHub runneri (`401 Not logged in`). Overené: secret má správnu
+> dĺžku (110 znakov), zlyháva aj čisté Claude CLI bez `claude-code-action`, takže chyba je
+> v tokene alebo v účte, z ktorého vznikol – nie vo workflowe.
+>
+> **Znova zapnúť:** získať funkčnú autentifikáciu (token, ktorý prejde lokálne:
+> `$env:CLAUDE_CODE_OAUTH_TOKEN=$t; claude -p "OK"`, alebo API kľúč z Claude Console –
+> vtedy vo workflowe vymeniť `claude_code_oauth_token` za `anthropic_api_key`), uložiť
+> ho do GitHub secretu a potom `gh workflow enable sync_failure_agent.yml`.
+> Kým je vypnutý, o zlyhaní sync-u ťa informuje len Telegram z workflowu "RPO FO Sync".
+
+
 `.github/workflows/sync_failure_agent.yml` – po zlyhaní „RPO FO Sync" agent prečíta log:
 
 | Príčina | Čo agent urobí |
