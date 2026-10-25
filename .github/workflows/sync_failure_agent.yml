@@ -61,7 +61,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          show_full_output: true  # DOCASNE na ladenie, nezabudni odstranit (repo je verejne)
           prompt: |
             Si pohotovostný agent pre RPO synchronizáciu projektu A1XMLPDF
             (skript sync_rpo_fo.py, workflow sync_rpo_fo.yml). Beh číslo
