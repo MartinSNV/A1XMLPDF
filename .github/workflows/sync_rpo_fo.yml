@@ -42,7 +42,8 @@ jobs:
           SINCE_OVERRIDE: ${{ github.event.inputs.since_override }}
         run: |
           pip install requests
-          python3 sync_rpo_fo.py
+          # -X faulthandler: pri segfaulte (exit 139) vypíše traceback, kde python spadol
+          python3 -X faulthandler sync_rpo_fo.py
 
       # Ulož postup aj keď sync zlyhal – inak by ďalší beh začal znova od nuly
       - name: Save sync state

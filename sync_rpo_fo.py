@@ -34,20 +34,84 @@ def log(msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"{ts} {msg}", flush=True)
 
+STATE_TABLE = "defaultdb.rpo_sync_state"
+ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T[0-9:.]+(Z|[+-]\d{2}:?\d{2})?$")
+_last_db_saved = None   # posledná hodnota zapísaná do DB (aby sme nespúšťali psql zbytočne)
+
+def psql_run(sql, timeout=60):
+    """Spustí jeden SQL príkaz cez psql. Vráti (returncode, stdout, stderr)."""
+    try:
+        r = subprocess.run(
+            ["psql", COCKROACH_URL, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        return r.returncode, r.stdout.strip(), r.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return 124, "", f"timeout po {timeout}s"
+
+def ensure_state_table():
+    rc, _, err = psql_run(
+        f"CREATE TABLE IF NOT EXISTS {STATE_TABLE} ("
+        "id INT PRIMARY KEY, last_sync_at STRING NOT NULL, "
+        "updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+    )
+    if rc != 0:
+        raise RuntimeError(f"Nepodarilo sa pripraviť tabuľku stavu: {err[:300]}")
+
+def load_db_state():
+    """Vráti last_sync_at z DB alebo None ak ešte neexistuje. Pri chybe DB vyhodí výnimku –
+    tichý návrat k starému stavu by znamenal prepočítanie mesiacov dát."""
+    rc, out, err = psql_run(f"SELECT last_sync_at FROM {STATE_TABLE} WHERE id = 1")
+    if rc != 0:
+        raise RuntimeError(f"Čítanie stavu z DB zlyhalo: {err[:300]}")
+    return out or None
+
+def save_db_state(since):
+    global _last_db_saved
+    if since == _last_db_saved:
+        return
+    if not ISO_RE.match(since):
+        log(f"VAROVANIE: neplatný formát since '{since}', do DB neukladám")
+        return
+    rc, _, err = psql_run(
+        f"UPSERT INTO {STATE_TABLE} (id, last_sync_at, updated_at) "
+        f"VALUES (1, '{since}', now())"
+    )
+    if rc == 0:
+        _last_db_saved = since
+    else:
+        log(f"CHYBA uloženia stavu do DB: {err[:300]}")
+
 def load_state():
+    """Priorita: SINCE_OVERRIDE > DB > súbor (cache/repo) > posledných 7 dní."""
+    global _last_db_saved
+    ensure_state_table()
+
     since_override = os.environ.get("SINCE_OVERRIDE", "").strip()
     if since_override:
+        if not ISO_RE.match(since_override):
+            raise ValueError(f"SINCE_OVERRIDE nemá platný ISO formát: {since_override}")
         log(f"Použitý manuálny since_override: {since_override}")
         return {"last_sync_at": since_override}
+
+    db_since = load_db_state()
+    if db_since:
+        _last_db_saved = db_since
+        log(f"Stav načítaný z DB: {db_since}")
+        return {"last_sync_at": db_since}
+
     if os.path.exists(STATE_FILE):
+        log("VAROVANIE: v DB nie je stav, používam súbor (môže byť zastaraný)")
         with open(STATE_FILE) as f:
             return json.load(f)
     since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     return {"last_sync_at": since}
 
 def save_state(since):
+    # Súbor zostáva ako záloha (Actions cache), zdrojom pravdy je DB.
     with open(STATE_FILE, "w") as f:
         json.dump({"last_sync_at": since}, f)
+    save_db_state(since)
 
 def fetch_page(url):
     """Stiahne jednu stránku s retry logikou. Vráti response alebo None ak zlyhalo úplne."""
